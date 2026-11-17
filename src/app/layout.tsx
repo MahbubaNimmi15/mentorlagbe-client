@@ -1,11 +1,16 @@
 
 import type { Metadata } from "next";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MentorLagbe | Smart Tuition & Mentorship",
+  title: {
+    default: "MentorLagbe | Learn Beyond Limits",
+    template: "%s | MentorLagbe",
+  },
   description:
-    "Find tutors and mentorship opportunities that match your learning goals with MentorLagbe.",
+    "Discover personalized tuition and mentorship opportunities with MentorLagbe.",
 };
 
 export default function RootLayout({
@@ -15,7 +20,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="min-h-screen">
+        <SiteHeader />
+        <main>{children}</main>
+        <SiteFooter />
+      </body>
     </html>
   );
 }

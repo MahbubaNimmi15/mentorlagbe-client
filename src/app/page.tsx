@@ -1,359 +1,346 @@
 
-"use client";
-
 import Link from "next/link";
-import { useState } from "react";
 import {
   ArrowRight,
+  ArrowUpRight,
   BookOpen,
-  CheckCircle2,
+  Check,
+  ChevronRight,
   GraduationCap,
-  Menu,
+  Lightbulb,
   Search,
   ShieldCheck,
   Sparkles,
   Users,
-  X,
+  Video,
 } from "lucide-react";
 
-const subjects = [
-  { name: "Mathematics", icon: "∑", count: "Build confidence" },
-  { name: "Physics", icon: "⚛", count: "Learn concepts" },
-  { name: "Programming", icon: "</>", count: "Code smarter" },
-  { name: "English & IELTS", icon: "Aa", count: "Improve skills" },
+import { TuitionCard } from "@/components/tuition-card";
+import { tuitions } from "@/lib/tuition-data";
+
+const categories = [
+  { name: "Mathematics", icon: "∑", color: "#E3F4E8" },
+  { name: "Physics", icon: "⚛", color: "#E8E9FF" },
+  { name: "Programming", icon: "</>", color: "#FFF0DF" },
+  { name: "English", icon: "Aa", color: "#FCE7EA" },
 ];
 
-const steps = [
+const howItWorks = [
   {
     number: "01",
-    title: "Discover a mentor",
+    title: "Explore opportunities",
     description:
-      "Explore subjects, class levels, learning modes, and budgets.",
+      "Search tuition listings by subject, class level and learning mode.",
+    icon: Search,
   },
   {
     number: "02",
-    title: "Apply for tuition",
+    title: "Choose your fit",
     description:
-      "Choose your preferred schedule and send your application.",
+      "Compare schedules, monthly fees and tutor profiles.",
+    icon: Users,
   },
   {
     number: "03",
-    title: "Start learning",
+    title: "Apply and grow",
     description:
-      "Connect with your tutor after your application is accepted.",
+      "Submit an application and start learning once accepted.",
+    icon: GraduationCap,
   },
 ];
 
-export default function Home() {
-  const [menuOpen, setMenuOpen] = useState(false);
+export default function HomePage() {
+  const featured = tuitions.slice(0, 6);
 
   return (
-    <div className="site">
-      <header className="site-header">
-        <nav className="navbar container">
-          <Link href="/" className="brand">
-            <span className="brand-icon">
-              <GraduationCap size={25} />
-            </span>
-            <span>MentorLagbe</span>
-          </Link>
-
-          <div className="desktop-navigation">
-            <Link href="/">Home</Link>
-            <Link href="/tuitions">Browse Tuitions</Link>
-            <Link href="/pricing">Pricing</Link>
-            <Link href="/#how-it-works">How It Works</Link>
-          </div>
-
-          <div className="desktop-actions">
-            <Link href="/sign-in" className="login-link">
-              Sign In
-            </Link>
-            <Link href="/sign-up" className="btn btn-primary">
-              Get Started <ArrowRight size={17} />
-            </Link>
-          </div>
-
-          <button
-            type="button"
-            className="mobile-menu-button"
-            onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="Toggle navigation"
-            aria-expanded={menuOpen}
-          >
-            {menuOpen ? <X /> : <Menu />}
-          </button>
-        </nav>
-
-        {menuOpen && (
-          <div className="mobile-navigation">
-            <Link href="/" onClick={() => setMenuOpen(false)}>
-              Home
-            </Link>
-            <Link
-              href="/tuitions"
-              onClick={() => setMenuOpen(false)}
-            >
-              Browse Tuitions
-            </Link>
-            <Link
-              href="/pricing"
-              onClick={() => setMenuOpen(false)}
-            >
-              Pricing
-            </Link>
-            <Link
-              href="/#how-it-works"
-              onClick={() => setMenuOpen(false)}
-            >
-              How It Works
-            </Link>
-            <Link
-              href="/sign-in"
-              onClick={() => setMenuOpen(false)}
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/sign-up"
-              onClick={() => setMenuOpen(false)}
-            >
-              Get Started
-            </Link>
-          </div>
-        )}
-      </header>
-
-      <main>
-        <section className="hero">
-          <div className="container hero-grid">
-            <div className="hero-content">
-              <div className="eyebrow">
-                <Sparkles size={16} />
-                A smarter way to learn
-              </div>
-
-              <h1>
-                Find the right mentor.
-                <span> Unlock your potential.</span>
-              </h1>
-
-              <p className="hero-description">
-                Discover personalized tuition and mentorship
-                opportunities that match your subjects, goals,
-                schedule, and budget.
-              </p>
-
-              <div className="hero-actions">
-                <Link
-                  href="/tuitions"
-                  className="btn btn-primary btn-large"
-                >
-                  <Search size={19} />
-                  Explore Tuitions
-                </Link>
-
-                <Link
-                  href="/sign-up"
-                  className="btn btn-outline btn-large"
-                >
-                  Become a Tutor
-                  <ArrowRight size={18} />
-                </Link>
-              </div>
-
-              <div className="hero-benefits">
-                <span>
-                  <CheckCircle2 size={17} /> Flexible learning
-                </span>
-                <span>
-                  <CheckCircle2 size={17} /> Online & offline
-                </span>
-              </div>
+    <>
+      <section className="relative overflow-hidden bg-[#fff9f0]">
+        <div className="site-container grid min-h-[620px] items-center gap-12 py-16 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">
+          <div className="relative z-10">
+            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#f2d9c9] bg-white px-4 py-2 text-xs font-bold text-[#96543d]">
+              <Sparkles size={15} />
+              Your next chapter begins here
             </div>
 
-            <div className="hero-visual">
-              <div className="visual-glow" />
-
-              <div className="learning-card">
-                <div className="learning-card-top">
-                  <span className="live-indicator" />
-                  YOUR LEARNING JOURNEY
-                </div>
-
-                <div className="learning-icon">
-                  <GraduationCap size={52} />
-                </div>
-
-                <h2>Learn with purpose.</h2>
-                <p>
-                  Find guidance for every milestone of your
-                  academic journey.
-                </p>
-
-                <div className="mini-features">
-                  <div>
-                    <BookOpen size={22} />
-                    <span>Subject-focused</span>
-                  </div>
-                  <div>
-                    <Users size={22} />
-                    <span>1-on-1 & batches</span>
-                  </div>
-                  <div>
-                    <ShieldCheck size={22} />
-                    <span>Reviewed listings</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="floating-tag">
-                <Sparkles size={17} />
-                Your goals. Your mentor.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="subjects-section">
-          <div className="container">
-            <div className="section-heading">
-              <div>
-                <span className="section-kicker">
-                  EXPLORE SUBJECTS
-                </span>
-                <h2>What would you like to learn?</h2>
-                <p>
-                  Explore learning opportunities across popular
-                  academic subjects.
-                </p>
-              </div>
-
-              <Link href="/tuitions" className="text-link">
-                Browse All
-                <ArrowRight size={18} />
-              </Link>
-            </div>
-
-            <div className="subject-grid">
-              {subjects.map((subject) => (
-                <Link
-                  href="/tuitions"
-                  className="subject-card"
-                  key={subject.name}
-                >
-                  <div className="subject-icon">
-                    {subject.icon}
-                  </div>
-                  <h3>{subject.name}</h3>
-                  <p>{subject.count}</p>
-                  <ArrowRight
-                    size={20}
-                    className="subject-arrow"
-                  />
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section
-          className="how-section"
-          id="how-it-works"
-        >
-          <div className="container">
-            <div className="center-heading">
-              <span className="section-kicker">
-                SIMPLE & EFFECTIVE
+            <h1 className="display-heading max-w-[680px]">
+              Great minds
+              <br />
+              grow with
+              <br />
+              <span className="text-[#e97c53]">
+                great mentors.
               </span>
-              <h2>How MentorLagbe Works</h2>
-              <p>
-                Three simple steps to start your next learning
-                experience.
-              </p>
-            </div>
+            </h1>
 
-            <div className="steps-grid">
-              {steps.map((step) => (
-                <div className="step-card" key={step.number}>
-                  <div className="step-number">
-                    {step.number}
-                  </div>
-                  <h3>{step.title}</h3>
-                  <p>{step.description}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+            <p className="mt-7 max-w-[530px] text-[17px] leading-8 text-[#687683]">
+              Discover thoughtful tuition and mentorship
+              opportunities designed around your goals,
+              schedule and learning style.
+            </p>
 
-        <section className="cta-section">
-          <div className="container">
-            <div className="cta-panel">
-              <div>
-                <span className="cta-label">
-                  START YOUR JOURNEY
-                </span>
-                <h2>Your next milestone starts here.</h2>
-                <p>
-                  Join MentorLagbe and take the next step
-                  toward your learning goals.
-                </p>
-              </div>
+            <div className="mt-9 flex flex-wrap gap-3">
               <Link
-                href="/sign-up"
-                className="btn btn-light"
+                href="/tuitions"
+                className="btn-primary"
               >
-                Create Your Account
-                <ArrowRight size={18} />
+                Find Your Mentor
+                <ArrowUpRight size={19} />
+              </Link>
+
+              <Link
+                href="/#how-it-works"
+                className="btn-secondary"
+              >
+                How It Works
+                <ChevronRight size={18} />
               </Link>
             </div>
-          </div>
-        </section>
-      </main>
 
-      <footer className="footer">
-        <div className="container footer-grid">
-          <div>
-            <Link href="/" className="brand footer-brand">
-              <span className="brand-icon">
-                <GraduationCap size={23} />
+            <div className="mt-10 flex flex-wrap gap-5 text-xs font-semibold text-[#65747c]">
+              <span className="flex items-center gap-2">
+                <Check size={16} className="text-[#348265]" />
+                Online & offline
               </span>
-              <span>MentorLagbe</span>
-            </Link>
-            <p>
-              Connecting learners with meaningful mentorship
-              opportunities.
+              <span className="flex items-center gap-2">
+                <Check size={16} className="text-[#348265]" />
+                Flexible schedules
+              </span>
+              <span className="flex items-center gap-2">
+                <Check size={16} className="text-[#348265]" />
+                Subject-focused learning
+              </span>
+            </div>
+          </div>
+
+          <div className="relative mx-auto flex w-full max-w-[520px] items-center justify-center py-10">
+            <div className="hero-pattern absolute inset-0 rounded-[50px]" />
+
+            <div className="relative w-[85%] rotate-[-5deg] rounded-[34px] bg-[#14243a] p-7 text-white shadow-[0_30px_70px_rgba(20,36,58,.18)] sm:p-10">
+              <div className="flex items-center justify-between">
+                <span className="rounded-full bg-white/10 px-4 py-2 text-xs font-semibold">
+                  Learning space
+                </span>
+                <Sparkles size={25} className="text-[#ffb58d]" />
+              </div>
+
+              <div className="mt-12 flex h-[180px] items-center justify-center rounded-[28px] bg-[#e3f4e8] sm:h-[230px]">
+                <div className="relative flex h-32 w-32 items-center justify-center rounded-full bg-[#ff8b63] text-[#14243a] sm:h-40 sm:w-40">
+                  <GraduationCap size={84} strokeWidth={1.5} />
+                  <div className="absolute -right-5 -top-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-xl">
+                    <Lightbulb size={26} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8">
+                <p className="text-xs font-bold uppercase tracking-[3px] text-[#9fc4bb]">
+                  Your potential
+                </p>
+                <h2 className="mt-3 text-3xl font-extrabold tracking-tight">
+                  Learning made personal.
+                </h2>
+                <p className="mt-3 text-sm leading-7 text-[#aebfcb]">
+                  Find a learning experience that feels
+                  right for you.
+                </p>
+              </div>
+
+              <div className="mt-7 flex items-center gap-3">
+                {[BookOpen, Video, ShieldCheck].map(
+                  (Icon, index) => (
+                    <span
+                      key={index}
+                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10"
+                    >
+                      <Icon size={20} />
+                    </span>
+                  )
+                )}
+              </div>
+            </div>
+
+            <div className="absolute right-0 top-6 rotate-[7deg] rounded-2xl bg-white px-5 py-4 shadow-xl">
+              <span className="flex items-center gap-2 text-sm font-extrabold">
+                <Sparkles size={18} className="text-[#e97c53]" />
+                Keep growing!
+              </span>
+            </div>
+
+            <div className="absolute bottom-1 left-0 rotate-[5deg] rounded-2xl bg-[#ff8b63] px-5 py-4 text-sm font-extrabold shadow-xl">
+              Learn your way
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="subjects"
+        className="site-container scroll-mt-24 py-20 lg:py-24"
+      >
+        <div className="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+          <div>
+            <p className="mb-3 text-xs font-extrabold uppercase tracking-[3px] text-[#d97750]">
+              Discover your interest
+            </p>
+            <h2 className="section-title">
+              What sparks your curiosity?
+            </h2>
+            <p className="mt-4 max-w-xl text-sm leading-7 text-[#6c7b88]">
+              Every big achievement begins with a
+              subject you love exploring.
             </p>
           </div>
 
-          <div className="footer-links">
-            <h4>Explore</h4>
-            <Link href="/">Home</Link>
-            <Link href="/tuitions">Browse Tuitions</Link>
-            <Link href="/pricing">Pricing</Link>
-          </div>
-
-          <div className="footer-links">
-            <h4>Account</h4>
-            <Link href="/sign-in">Sign In</Link>
-            <Link href="/sign-up">Sign Up</Link>
-          </div>
-
-          <div className="footer-links">
-            <h4>Follow Us</h4>
-            <span>Social links coming soon</span>
-          </div>
+          <Link
+            href="/tuitions"
+            className="inline-flex items-center gap-2 text-sm font-extrabold"
+          >
+            Explore all subjects
+            <ArrowRight size={17} />
+          </Link>
         </div>
 
-        <div className="container footer-bottom">
-          <span>
-            © {new Date().getFullYear()} MentorLagbe.
-            All rights reserved.
-          </span>
-          <span>Made for lifelong learners.</span>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {categories.map((category) => (
+            <Link
+              key={category.name}
+              href={`/tuitions?subject=${encodeURIComponent(category.name)}`}
+              className="card-hover group relative min-h-[210px] rounded-[25px] p-7"
+              style={{ backgroundColor: category.color }}
+            >
+              <div className="text-5xl font-black tracking-tight">
+                {category.icon}
+              </div>
+
+              <div className="absolute bottom-7 left-7 right-7 flex items-center justify-between">
+                <h3 className="text-lg font-extrabold">
+                  {category.name}
+                </h3>
+                <ArrowUpRight
+                  size={21}
+                  className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1"
+                />
+              </div>
+            </Link>
+          ))}
         </div>
-      </footer>
-    </div>
+      </section>
+
+      <section className="bg-[#f7faf7] py-20 lg:py-24">
+        <div className="site-container">
+          <div className="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+            <div>
+              <p className="mb-3 text-xs font-extrabold uppercase tracking-[3px] text-[#d97750]">
+                Explore tuitions
+              </p>
+              <h2 className="section-title">
+                Find your next learning opportunity.
+              </h2>
+              <p className="mt-4 text-sm text-[#6c7b88]">
+                Preview tuition opportunities from our
+                demonstration catalog.
+              </p>
+            </div>
+
+            <Link
+              href="/tuitions"
+              className="inline-flex items-center gap-2 text-sm font-extrabold"
+            >
+              Browse all tuitions
+              <ArrowRight size={18} />
+            </Link>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {featured.map((tuition) => (
+              <TuitionCard
+                key={tuition.id}
+                tuition={tuition}
+              />
+            ))}
+          </div>
+
+          <p className="mt-5 text-xs text-[#81909a]">
+            Demo listings — tutor profiles and booking
+            are not yet connected to MongoDB.
+          </p>
+        </div>
+      </section>
+
+      <section
+        id="how-it-works"
+        className="site-container scroll-mt-24 py-20 lg:py-24"
+      >
+        <div className="mx-auto mb-12 max-w-xl text-center">
+          <p className="mb-3 text-xs font-extrabold uppercase tracking-[3px] text-[#d97750]">
+            A simple journey
+          </p>
+          <h2 className="section-title">
+            Three steps. Endless possibilities.
+          </h2>
+          <p className="mt-4 text-sm leading-7 text-[#6c7b88]">
+            A simple path from finding the right opportunity
+            to starting your learning journey.
+          </p>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-3">
+          {howItWorks.map((step) => (
+            <article
+              key={step.number}
+              className="rounded-[25px] border border-[#e7ebe8] p-8"
+            >
+              <div className="flex items-start justify-between">
+                <span className="text-5xl font-black text-[#e9eae5]">
+                  {step.number}
+                </span>
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e3f4e8]">
+                  <step.icon size={25} />
+                </div>
+              </div>
+
+              <h3 className="mt-10 text-xl font-extrabold">
+                {step.title}
+              </h3>
+              <p className="mt-3 text-sm leading-7 text-[#72808c]">
+                {step.description}
+              </p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="site-container pb-20 lg:pb-24">
+        <div className="relative overflow-hidden rounded-[32px] bg-[#14243a] px-7 py-16 text-center text-white md:px-14">
+          <div className="absolute -left-20 -top-20 h-56 w-56 rounded-full bg-[#ff8b63]/20 blur-2xl" />
+          <div className="absolute -bottom-24 -right-10 h-64 w-64 rounded-full bg-[#e3f4e8]/10 blur-2xl" />
+
+          <div className="relative">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-[#ffd6bd]">
+              <Sparkles size={15} />
+              Take the next step
+            </span>
+
+            <h2 className="mx-auto mt-6 max-w-2xl text-4xl font-extrabold tracking-tight md:text-5xl">
+              The future you want starts with what you
+              learn today.
+            </h2>
+
+            <p className="mx-auto mt-5 max-w-lg text-sm leading-7 text-[#bdcad5]">
+              Explore a better way to discover tutors,
+              subjects and mentorship opportunities.
+            </p>
+
+            <Link
+              href="/tuitions"
+              className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#ff8b63] px-6 py-4 text-sm font-extrabold text-[#14243a] transition hover:bg-[#ffaf8c]"
+            >
+              Discover Tuitions
+              <ArrowUpRight size={18} />
+            </Link>
+          </div>
+        </div>
+      </section>
+    </>
   );
 }
