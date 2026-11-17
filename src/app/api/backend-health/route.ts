@@ -1,8 +1,6 @@
 
 import { NextResponse } from "next/server";
 
-export const dynamic = "force-dynamic";
-
 export async function GET() {
   const baseUrl = process.env.API_BASE_URL;
 
@@ -17,19 +15,19 @@ export async function GET() {
   }
 
   try {
-    const response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}/api/health`,
-      {
-        cache: "no-store",
-        signal: AbortSignal.timeout(10000),
-      }
-    );
+    const backendUrl = `${baseUrl.replace(/\/$/, "")}/api/health`;
+
+    const response = await fetch(backendUrl, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000),
+    });
 
     if (!response.ok) {
       return NextResponse.json(
         {
           success: false,
-          message: "Backend API returned an error",
+          message: "Backend health check failed",
+          backendStatus: response.status,
         },
         { status: 502 }
       );
@@ -43,7 +41,7 @@ export async function GET() {
       backend,
     });
   } catch (error) {
-    console.error("Backend connection failed:", error);
+    console.error("Backend connection error:", error);
 
     return NextResponse.json(
       {
