@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
-  Check,
   RotateCcw,
   Search,
   ShieldCheck,
@@ -13,6 +12,9 @@ import {
   Users,
   X,
 } from "lucide-react";
+
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast-provider";
 
 type Role = "student" | "tutor" | "admin";
 type Plan = "free" | "pro";
@@ -27,6 +29,11 @@ type DemoUser = {
   phone: string;
   bio: string;
   joinedAt: string;
+};
+
+type RoleChange = {
+  userId: string;
+  nextRole: Role;
 };
 
 const initialUsers: DemoUser[] = [
@@ -126,6 +133,8 @@ function initials(name: string): string {
 }
 
 export default function AdminUsersPage() {
+  const toast = useToast();
+
   const [users, setUsers] = useState<DemoUser[]>(() =>
     initialUsers.map((user) => ({ ...user }))
   );
@@ -134,15 +143,20 @@ export default function AdminUsersPage() {
   const [roleFilter, setRoleFilter] =
     useState<RoleFilter>("all");
 
-  const [selectedUser, setSelectedUser] =
-    useState<DemoUser | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<
+    string | null
+  >(null);
 
-  const [roleChange, setRoleChange] = useState<{
-    userId: string;
-    nextRole: Role;
-  } | null>(null);
+  const [roleChange, setRoleChange] =
+    useState<RoleChange | null>(null);
 
-  const [message, setMessage] = useState("");
+  const selectedUser = users.find(
+    (user) => user.id === selectedUserId
+  );
+
+  const changingUser = roleChange
+    ? users.find((user) => user.id === roleChange.userId)
+    : null;
 
   const stats = useMemo(
     () => ({
@@ -181,14 +195,28 @@ export default function AdminUsersPage() {
     });
   }, [users, search, roleFilter]);
 
-  const changingUser = roleChange
-    ? users.find((user) => user.id === roleChange.userId)
-    : null;
-
-  function requestRoleChange(user: DemoUser, nextRole: Role) {
+  function requestRoleChange(
+    user: DemoUser,
+    nextRole: Role
+  ) {
     if (user.role === nextRole) return;
 
-    setMessage("");
+    const isLastAdmin =
+      user.role === "admin" &&
+      stats.admins <= 1 &&
+      nextRole !== "admin";
+
+    if (isLastAdmin) {
+      toast.error({
+        title: "Cannot Change Last Admin",
+        description:
+          "At least one administrator must remain in the demo.",
+      });
+      return;
+    }
+
+    setSelectedUserId(null);
+
     setRoleChange({
       userId: user.id,
       nextRole,
@@ -196,49 +224,69 @@ export default function AdminUsersPage() {
   }
 
   function confirmRoleChange() {
-    if (!roleChange || !changingUser) return;
+    if (!roleChange) return;
+
+    const user = users.find(
+      (item) => item.id === roleChange.userId
+    );
+
+    if (!user) {
+      setRoleChange(null);
+      toast.error({
+        title: "User Not Found",
+        description: "The selected demo user is unavailable.",
+      });
+      return;
+    }
 
     const isLastAdmin =
-      changingUser.role === "admin" &&
+      user.role === "admin" &&
       stats.admins <= 1 &&
       roleChange.nextRole !== "admin";
 
     if (isLastAdmin) {
-      setMessage(
-        "The last demo administrator cannot be demoted."
-      );
       setRoleChange(null);
+
+      toast.error({
+        title: "Cannot Change Last Admin",
+        description:
+          "The final demo administrator cannot be demoted.",
+      });
       return;
     }
 
     const nextRole = roleChange.nextRole;
-    const userName = changingUser.name;
 
     setUsers((current) =>
-      current.map((user) =>
-        user.id === roleChange.userId
-          ? { ...user, role: nextRole }
-          : user
+      current.map((item) =>
+        item.id === roleChange.userId
+          ? { ...item, role: nextRole }
+          : item
       )
     );
 
     setRoleChange(null);
-    setSelectedUser(null);
+    setSelectedUserId(null);
 
-    setMessage(
-      `${userName}'s demo role changed to ${capitalize(
-        nextRole
-      )}. No real account was updated.`
-    );
+    toast.success({
+      title: "Demo Role Changed",
+      description:
+        `${user.name}'s role changed to ${capitalize(nextRole)} in local preview only.`,
+    });
   }
 
   function resetDemo() {
     setUsers(initialUsers.map((user) => ({ ...user })));
     setSearch("");
     setRoleFilter("all");
-    setSelectedUser(null);
+    setSelectedUserId(null);
     setRoleChange(null);
-    setMessage("Original demo records restored.");
+
+    toast.info({
+      title: "Demo Users Restored",
+      description:
+        "The original sample accounts and roles have been restored.",
+    });
   }
 
   return (
@@ -274,12 +322,12 @@ export default function AdminUsersPage() {
           </div>
         </header>
 
-        {/* Warning */}
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-          <strong>Demo Data Only:</strong> These accounts are
-          fictional. Role changes update this browser session
-          and reset after refresh. Real account management
-          requires authentication and protected Admin APIs.
+          <strong>Demo Data Only:</strong> These accounts
+          are fictional. Role changes only affect this
+          browser session and reset after refresh.
+          Real permission changes require protected
+          Admin APIs.
         </div>
 
         {/* Statistics */}
@@ -329,7 +377,7 @@ export default function AdminUsersPage() {
           })}
         </section>
 
-        {/* User List */}
+        {/* Users */}
         <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -338,8 +386,8 @@ export default function AdminUsersPage() {
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                Showing {filteredUsers.length} of {users.length}
-                {" "}sample users
+                Showing {filteredUsers.length} of{" "}
+                {users.length} sample users
               </p>
             </div>
 
@@ -353,16 +401,7 @@ export default function AdminUsersPage() {
             </button>
           </div>
 
-          {message && (
-            <div
-              role="status"
-              className="mt-5 rounded-xl bg-[#e3f4e8] p-4 text-sm font-medium text-emerald-900"
-            >
-              {message}
-            </div>
-          )}
-
-          {/* Search & Role Filter */}
+          {/* Search and filter */}
           <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_190px]">
             <div className="relative">
               <Search
@@ -409,7 +448,7 @@ export default function AdminUsersPage() {
             </div>
           </div>
 
-          {/* Users Table */}
+          {/* Table */}
           <div className="mt-6 overflow-x-auto">
             <table className="w-full min-w-[760px] border-collapse text-left text-sm">
               <thead>
@@ -438,9 +477,11 @@ export default function AdminUsersPage() {
                           <p className="font-bold text-[#14243a]">
                             {user.name}
                           </p>
+
                           <p className="text-xs text-slate-500">
                             {user.email}
                           </p>
+
                           <p className="mt-1 text-xs text-slate-400">
                             {user.id}
                           </p>
@@ -476,7 +517,9 @@ export default function AdminUsersPage() {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setSelectedUser(user)}
+                          onClick={() =>
+                            setSelectedUserId(user.id)
+                          }
                           className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
                         >
                           Details
@@ -516,132 +559,92 @@ export default function AdminUsersPage() {
             )}
           </div>
         </section>
-      </div>
 
-      {/* User Details Modal */}
-      {selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14243a]/70 p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="user-details-title"
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-xl"
-          >
-            <div className="flex items-center justify-between gap-4">
-              <h2
-                id="user-details-title"
-                className="text-xl font-extrabold text-[#14243a]"
-              >
-                User Details
-              </h2>
-
-              <button
-                type="button"
-                aria-label="Close details"
-                onClick={() => setSelectedUser(null)}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              {[
-                ["User ID", selectedUser.id],
-                ["Full Name", selectedUser.name],
-                ["Email", selectedUser.email],
-                ["Phone", selectedUser.phone],
-                ["Role", capitalize(selectedUser.role)],
-                ["Plan", capitalize(selectedUser.plan)],
-                ["Joined", formatDate(selectedUser.joinedAt)],
-                ["Bio", selectedUser.bio],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="border-b border-slate-100 pb-3"
+        {/* User details */}
+        {selectedUser && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#14243a]/70 p-4">
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="user-details-title"
+              className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-xl"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <h2
+                  id="user-details-title"
+                  className="text-xl font-extrabold text-[#14243a]"
                 >
-                  <p className="text-xs font-bold text-slate-400">
-                    {label}
-                  </p>
-                  <p className="mt-1 break-words text-sm font-medium text-[#14243a]">
-                    {value}
-                  </p>
-                </div>
-              ))}
-            </div>
+                  User Details
+                </h2>
 
-            <button
-              type="button"
-              onClick={() => setSelectedUser(null)}
-              className="mt-6 w-full rounded-xl bg-[#14243a] px-5 py-3 text-sm font-bold text-white"
-            >
-              Close Details
-            </button>
-          </div>
-        </div>
-      )}
+                <button
+                  type="button"
+                  aria-label="Close details"
+                  onClick={() => setSelectedUserId(null)}
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                >
+                  <X size={20} />
+                </button>
+              </div>
 
-      {/* Role Change Confirmation Modal */}
-      {roleChange && changingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14243a]/70 p-4">
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="role-confirm-title"
-            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl"
-          >
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-[#e97c53]">
-              <UserCog size={24} />
-            </div>
+              <div className="mt-6 space-y-4">
+                {[
+                  ["User ID", selectedUser.id],
+                  ["Full Name", selectedUser.name],
+                  ["Email", selectedUser.email],
+                  ["Phone", selectedUser.phone],
+                  ["Role", capitalize(selectedUser.role)],
+                  ["Plan", capitalize(selectedUser.plan)],
+                  ["Joined", formatDate(selectedUser.joinedAt)],
+                  ["Bio", selectedUser.bio],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="border-b border-slate-100 pb-3"
+                  >
+                    <p className="text-xs font-bold text-slate-400">
+                      {label}
+                    </p>
 
-            <h2
-              id="role-confirm-title"
-              className="text-xl font-extrabold text-[#14243a]"
-            >
-              Confirm Role Change
-            </h2>
-
-            <p className="mt-3 text-sm leading-7 text-slate-600">
-              Change <strong>{changingUser.name}</strong>
-              {" "}from{" "}
-              <strong>
-                {capitalize(changingUser.role)}
-              </strong>
-              {" "}to{" "}
-              <strong>
-                {capitalize(roleChange.nextRole)}
-              </strong>
-              ?
-            </p>
-
-            <div className="mt-4 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-              This is a demo change only. No real permissions,
-              accounts or database documents will be modified.
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              {/* Corrected Cancel Button */}
-              <button
-                type="button"
-                onClick={() => setRoleChange(null)}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
-              >
-                <X size={16} />
-                Cancel
-              </button>
+                    <p className="mt-1 break-words text-sm font-medium text-[#14243a]">
+                      {value}
+                    </p>
+                  </div>
+                ))}
+              </div>
 
               <button
                 type="button"
-                onClick={confirmRoleChange}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#e97c53] px-4 py-3 text-sm font-bold text-white hover:bg-[#d96c45]"
+                onClick={() => setSelectedUserId(null)}
+                className="mt-6 w-full rounded-xl bg-[#14243a] px-5 py-3 text-sm font-bold text-white"
               >
-                <Check size={16} />
-                Confirm Change
+                Close Details
               </button>
-            </div>
+            </section>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Role change confirmation */}
+        <ConfirmDialog
+          open={Boolean(roleChange && changingUser)}
+          title="Confirm Role Change"
+          description={
+            changingUser && roleChange
+              ? `Change ${changingUser.name} from ${capitalize(changingUser.role)} to ${capitalize(roleChange.nextRole)}?`
+              : "Confirm this demo role change?"
+          }
+          confirmLabel="Confirm Role Change"
+          variant="warning"
+          onCancel={() => setRoleChange(null)}
+          onConfirm={confirmRoleChange}
+        >
+          <p className="text-sm">
+            This changes the sample role only. Real
+            account permissions and database records
+            remain unchanged.
+          </p>
+        </ConfirmDialog>
+      </div>
     </main>
   );
 }

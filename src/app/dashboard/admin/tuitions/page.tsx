@@ -1,13 +1,11 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import {
   ArrowLeft,
-  BookOpen,
   CheckCircle2,
-  Clock3,
   Eye,
   RotateCcw,
   Search,
@@ -16,9 +14,11 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast-provider";
+
 type ApprovalStatus = "pending" | "approved" | "rejected";
-type StatusFilter = "all" | ApprovalStatus;
-type TuitionMode = "Online" | "Offline";
+type StatusFilter = ApprovalStatus | "all";
 
 type Tuition = {
   id: string;
@@ -27,20 +27,25 @@ type Tuition = {
   tutorEmail: string;
   subject: string;
   classLevel: string;
-  mode: TuitionMode;
+  mode: "Online" | "Offline";
   location: string;
   monthlyFee: number;
   daysPerWeek: number;
   description: string;
+  createdAt: string;
   approvalStatus: ApprovalStatus;
   isActive: boolean;
-  createdAt: string;
+};
+
+type Confirmation = {
+  id: string;
+  nextStatus: "approved" | "rejected";
 };
 
 const initialTuitions: Tuition[] = [
   {
-    id: "TUI-201",
-    title: "SSC Mathematics Complete Preparation",
+    id: "TUI-101",
+    title: "Mathematics Tutor for Class 9-10",
     tutorName: "Ayesha Rahman",
     tutorEmail: "ayesha@example.com",
     subject: "Mathematics",
@@ -50,33 +55,33 @@ const initialTuitions: Tuition[] = [
     monthlyFee: 5000,
     daysPerWeek: 3,
     description:
-      "Structured mathematics lessons for SSC candidates, including algebra, geometry, weekly assessments and board examination preparation.",
+      "Mathematics tuition covering algebra, geometry and exam preparation.",
+    createdAt: "2026-11-15",
     approvalStatus: "pending",
     isActive: true,
-    createdAt: "2026-11-17",
   },
   {
-    id: "TUI-202",
-    title: "Spoken English and Grammar Course",
+    id: "TUI-102",
+    title: "English Grammar and Spoken English",
     tutorName: "Tanvir Hasan",
     tutorEmail: "tanvir@example.com",
     subject: "English",
-    classLevel: "Class 6 - 8",
+    classLevel: "HSC",
     mode: "Online",
-    location: "Anywhere in Bangladesh",
+    location: "Bangladesh",
     monthlyFee: 3500,
-    daysPerWeek: 4,
+    daysPerWeek: 2,
     description:
-      "Develop spoken English confidence through regular conversation, grammar practice, vocabulary building and guided speaking exercises.",
-    approvalStatus: "pending",
+      "Interactive grammar lessons, speaking practice and writing improvement.",
+    createdAt: "2026-11-14",
+    approvalStatus: "approved",
     isActive: true,
-    createdAt: "2026-11-16",
   },
   {
-    id: "TUI-203",
-    title: "HSC Physics Concept Builder",
-    tutorName: "Mahmud Islam",
-    tutorEmail: "mahmud@example.com",
+    id: "TUI-103",
+    title: "Physics Preparation for HSC",
+    tutorName: "Nabil Ahmed",
+    tutorEmail: "nabil@example.com",
     subject: "Physics",
     classLevel: "HSC",
     mode: "Offline",
@@ -84,44 +89,44 @@ const initialTuitions: Tuition[] = [
     monthlyFee: 6000,
     daysPerWeek: 3,
     description:
-      "Build strong HSC physics fundamentals with numerical problem solving, practical examples, exam-focused revision and mock tests.",
-    approvalStatus: "approved",
+      "Concept-based Physics learning with numerical problem-solving sessions.",
+    createdAt: "2026-11-13",
+    approvalStatus: "pending",
     isActive: true,
-    createdAt: "2026-11-14",
   },
   {
-    id: "TUI-204",
-    title: "Programming Fundamentals for Beginners",
-    tutorName: "Nabila Ahmed",
-    tutorEmail: "nabila@example.com",
-    subject: "Programming",
+    id: "TUI-104",
+    title: "ICT and Programming Fundamentals",
+    tutorName: "Samira Islam",
+    tutorEmail: "samira@example.com",
+    subject: "ICT",
     classLevel: "University",
     mode: "Online",
-    location: "Online",
+    location: "Bangladesh",
     monthlyFee: 4500,
     daysPerWeek: 2,
     description:
-      "Learn programming concepts through beginner-friendly lessons, Python fundamentals, practice exercises and hands-on projects.",
-    approvalStatus: "approved",
-    isActive: true,
-    createdAt: "2026-11-13",
-  },
-  {
-    id: "TUI-205",
-    title: "IELTS Intensive Coaching Program",
-    tutorName: "Farhan Kabir",
-    tutorEmail: "farhan@example.com",
-    subject: "IELTS",
-    classLevel: "IELTS",
-    mode: "Online",
-    location: "Online",
-    monthlyFee: 7000,
-    daysPerWeek: 4,
-    description:
-      "Focused IELTS preparation covering listening, reading, writing and speaking with regular practice and feedback.",
+      "Introduction to coding, computing fundamentals and practical projects.",
+    createdAt: "2026-11-12",
     approvalStatus: "rejected",
     isActive: false,
+  },
+  {
+    id: "TUI-105",
+    title: "Biology and Chemistry for SSC",
+    tutorName: "Farhan Kabir",
+    tutorEmail: "farhan@example.com",
+    subject: "Biology",
+    classLevel: "SSC",
+    mode: "Offline",
+    location: "Mirpur, Dhaka",
+    monthlyFee: 4000,
+    daysPerWeek: 4,
+    description:
+      "Structured lessons for Biology and Chemistry with regular mock tests.",
     createdAt: "2026-11-11",
+    approvalStatus: "pending",
+    isActive: true,
   },
 ];
 
@@ -131,77 +136,75 @@ const statusColors: Record<ApprovalStatus, string> = {
   rejected: "bg-red-100 text-red-800",
 };
 
-function formatMoney(amount: number): string {
-  return `৳${amount.toLocaleString("en-BD")}`;
-}
-
-function formatDate(date: string): string {
-  return new Date(`${date}T12:00:00`).toLocaleDateString(
-    "en-GB",
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }
-  );
-}
-
-function capitalize(value: string): string {
+function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-export default function AdminTuitionApprovalPage() {
-  const [tuitions, setTuitions] = useState<Tuition[]>(() =>
-    initialTuitions.map((item) => ({ ...item }))
-  );
+function formatMoney(value: number) {
+  return `BDT ${value.toLocaleString("en-BD")}`;
+}
 
+function formatDate(value: string) {
+  return new Date(`${value}T12:00:00`).toLocaleDateString(
+    "en-GB",
+    { day: "2-digit", month: "short", year: "numeric" }
+  );
+}
+
+export default function AdminTuitionsPage() {
+  const toast = useToast();
+
+  const [tuitions, setTuitions] = useState<Tuition[]>(() =>
+    initialTuitions.map((tuition) => ({ ...tuition }))
+  );
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<StatusFilter>("all");
+  const [selectedId, setSelectedId] = useState<string | null>(
+    null
+  );
+  const [confirmation, setConfirmation] =
+    useState<Confirmation | null>(null);
 
-  const [selectedTuitionId, setSelectedTuitionId] =
-    useState<string | null>(null);
+  const selectedTuition = tuitions.find(
+    (tuition) => tuition.id === selectedId
+  );
 
-  const [confirmation, setConfirmation] = useState<{
-    tuitionId: string;
-    nextStatus: "approved" | "rejected";
-  } | null>(null);
-
-  const [notice, setNotice] = useState("");
+  const confirmationTuition = confirmation
+    ? tuitions.find((tuition) => tuition.id === confirmation.id)
+    : null;
 
   const stats = useMemo(
     () => ({
       total: tuitions.length,
       pending: tuitions.filter(
-        (item) => item.approvalStatus === "pending"
+        (tuition) => tuition.approvalStatus === "pending"
       ).length,
       approved: tuitions.filter(
-        (item) => item.approvalStatus === "approved"
+        (tuition) => tuition.approvalStatus === "approved"
       ).length,
       rejected: tuitions.filter(
-        (item) => item.approvalStatus === "rejected"
+        (tuition) => tuition.approvalStatus === "rejected"
       ).length,
     }),
     [tuitions]
   );
 
   const filteredTuitions = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const keyword = search.trim().toLowerCase();
 
     return tuitions.filter((tuition) => {
-      const searchableText = [
+      const matchesSearch = [
         tuition.id,
         tuition.title,
         tuition.tutorName,
         tuition.tutorEmail,
         tuition.subject,
-        tuition.classLevel,
         tuition.location,
       ]
         .join(" ")
-        .toLowerCase();
-
-      const matchesSearch = searchableText.includes(query);
+        .toLowerCase()
+        .includes(keyword);
 
       const matchesStatus =
         statusFilter === "all" ||
@@ -211,79 +214,94 @@ export default function AdminTuitionApprovalPage() {
     });
   }, [tuitions, search, statusFilter]);
 
-  const selectedTuition = selectedTuitionId
-    ? tuitions.find(
-        (item) => item.id === selectedTuitionId
-      )
-    : null;
-
-  const confirmationTuition = confirmation
-    ? tuitions.find(
-        (item) => item.id === confirmation.tuitionId
-      )
-    : null;
-
   function requestApproval(
-    tuitionId: string,
+    id: string,
     nextStatus: "approved" | "rejected"
   ) {
-    const tuition = tuitions.find(
-      (item) => item.id === tuitionId
-    );
+    const tuition = tuitions.find((item) => item.id === id);
 
-    if (!tuition) return;
-    if (tuition.approvalStatus === nextStatus) return;
+    if (!tuition) {
+      toast.error({
+        title: "Tuition Not Found",
+        description: "The demo record is unavailable.",
+      });
+      return;
+    }
 
-    setNotice("");
-    setConfirmation({ tuitionId, nextStatus });
+    if (tuition.approvalStatus === nextStatus) {
+      toast.warning({
+        title: "Status Already Applied",
+        description: `This tuition is already ${nextStatus}.`,
+      });
+      return;
+    }
+
+    setSelectedId(null);
+    setConfirmation({ id, nextStatus });
   }
 
   function confirmApproval() {
-    if (!confirmation || !confirmationTuition) return;
+    if (!confirmation) return;
 
-    const tuitionTitle = confirmationTuition.title;
+    const tuition = tuitions.find(
+      (item) => item.id === confirmation.id
+    );
+
+    if (!tuition) {
+      setConfirmation(null);
+      toast.error({
+        title: "Unable to Update",
+        description: "The selected tuition was not found.",
+      });
+      return;
+    }
+
     const nextStatus = confirmation.nextStatus;
 
     setTuitions((current) =>
-      current.map((tuition) => {
-        if (tuition.id !== confirmation.tuitionId) {
-          return tuition;
-        }
-
-        return {
-          ...tuition,
-          approvalStatus: nextStatus,
-          isActive:
-            nextStatus === "rejected"
-              ? false
-              : tuition.isActive,
-        };
-      })
+      current.map((item) =>
+        item.id === confirmation.id
+          ? { ...item, approvalStatus: nextStatus }
+          : item
+      )
     );
 
     setConfirmation(null);
-    setSelectedTuitionId(null);
 
-    setNotice(
-      `"${tuitionTitle}" was ${nextStatus} in Demo Mode. No database was updated.`
-    );
+    if (nextStatus === "approved") {
+      toast.success({
+        title: "Demo Tuition Approved",
+        description:
+          `"${tuition.title}" is approved in local preview only.`,
+      });
+    } else {
+      toast.warning({
+        title: "Demo Tuition Rejected",
+        description:
+          `"${tuition.title}" is rejected in local preview only.`,
+      });
+    }
   }
 
   function resetDemo() {
     setTuitions(
-      initialTuitions.map((item) => ({ ...item }))
+      initialTuitions.map((tuition) => ({ ...tuition }))
     );
     setSearch("");
     setStatusFilter("all");
-    setSelectedTuitionId(null);
+    setSelectedId(null);
     setConfirmation(null);
-    setNotice("Original demo tuition records restored.");
+
+    toast.info({
+      title: "Demo Records Restored",
+      description:
+        "Original tuition approval statuses have been restored.",
+    });
   }
 
   return (
     <main className="min-h-screen bg-[#fff9f0] px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-7xl space-y-7">
-        {/* Header */}
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <Link
@@ -302,8 +320,8 @@ export default function AdminTuitionApprovalPage() {
               Tuition Approval
             </h1>
 
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Review tutor submissions and manage approval status.
+            <p className="mt-2 text-sm text-slate-600">
+              Review and moderate sample tuition listings.
             </p>
           </div>
 
@@ -313,77 +331,39 @@ export default function AdminTuitionApprovalPage() {
           </div>
         </header>
 
-        {/* Demo information */}
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-          <strong>Demo Data Only:</strong> These tuition
-          records are fictional. Approve and Reject
-          buttons update the current page only.
-          Refreshing restores the original records.
-          Real approval requires authentication,
-          MongoDB and protected Admin APIs.
+          <strong>Demo Data Only:</strong> Approval and
+          rejection update temporary local state. No real
+          listing is published, removed or changed.
         </div>
 
-        {/* Statistics */}
         <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[
-            {
-              label: "Total Tuitions",
-              value: stats.total,
-              icon: BookOpen,
-              tone: "bg-blue-50 text-blue-700",
-            },
-            {
-              label: "Pending",
-              value: stats.pending,
-              icon: Clock3,
-              tone: "bg-amber-50 text-amber-700",
-            },
-            {
-              label: "Approved",
-              value: stats.approved,
-              icon: CheckCircle2,
-              tone: "bg-emerald-50 text-emerald-700",
-            },
-            {
-              label: "Rejected",
-              value: stats.rejected,
-              icon: XCircle,
-              tone: "bg-red-50 text-red-700",
-            },
-          ].map((stat) => {
-            const Icon = stat.icon;
-
-            return (
-              <article
-                key={stat.label}
-                className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"
-              >
-                <div
-                  className={`mb-4 flex h-11 w-11 items-center justify-center rounded-xl ${stat.tone}`}
-                >
-                  <Icon size={21} />
-                </div>
-
-                <p className="text-sm font-semibold text-slate-500">
-                  {stat.label}
-                </p>
-
-                <p className="mt-2 text-3xl font-extrabold text-[#14243a]">
-                  {stat.value}
-                </p>
-              </article>
-            );
-          })}
+            { label: "Total", value: stats.total },
+            { label: "Pending", value: stats.pending },
+            { label: "Approved", value: stats.approved },
+            { label: "Rejected", value: stats.rejected },
+          ].map((item) => (
+            <article
+              key={item.label}
+              className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"
+            >
+              <p className="text-sm font-semibold text-slate-500">
+                {item.label}
+              </p>
+              <p className="mt-4 text-3xl font-extrabold text-[#14243a]">
+                {item.value}
+              </p>
+            </article>
+          ))}
         </section>
 
-        {/* Listings section */}
         <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-extrabold text-[#14243a]">
                 Tuition Submissions
               </h2>
-
               <p className="mt-1 text-sm text-slate-500">
                 Showing {filteredTuitions.length} of{" "}
                 {tuitions.length} sample listings
@@ -400,26 +380,16 @@ export default function AdminTuitionApprovalPage() {
             </button>
           </div>
 
-          {notice && (
-            <div
-              role="status"
-              className="mt-5 rounded-xl bg-[#e3f4e8] p-4 text-sm font-medium text-emerald-900"
-            >
-              {notice}
-            </div>
-          )}
-
-          {/* Search + Filter */}
           <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_190px]">
             <div className="relative">
+              <label htmlFor="tuition-search" className="sr-only">
+                Search tuition listings
+              </label>
+
               <Search
                 size={18}
                 className="pointer-events-none absolute left-4 top-3.5 text-slate-400"
               />
-
-              <label htmlFor="tuition-search" className="sr-only">
-                Search tuition submissions
-              </label>
 
               <input
                 id="tuition-search"
@@ -428,25 +398,25 @@ export default function AdminTuitionApprovalPage() {
                 onChange={(event) =>
                   setSearch(event.target.value)
                 }
-                placeholder="Search title, subject, tutor..."
-                className="w-full rounded-xl border border-slate-200 py-3 pl-11 pr-4 text-sm text-slate-800 outline-none focus:border-[#e97c53]"
+                placeholder="Search tuition, tutor, subject..."
+                className="w-full rounded-xl border border-slate-200 py-3 pl-11 pr-4 text-sm outline-none focus:border-[#e97c53]"
               />
             </div>
 
             <div>
-              <label htmlFor="approval-filter" className="sr-only">
-                Filter approval status
+              <label htmlFor="tuition-status" className="sr-only">
+                Filter tuition status
               </label>
 
               <select
-                id="approval-filter"
+                id="tuition-status"
                 value={statusFilter}
                 onChange={(event) =>
                   setStatusFilter(
                     event.target.value as StatusFilter
                   )
                 }
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#e97c53]"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#e97c53]"
               >
                 <option value="all">All Statuses</option>
                 <option value="pending">Pending</option>
@@ -456,18 +426,14 @@ export default function AdminTuitionApprovalPage() {
             </div>
           </div>
 
-          {/* Tuition cards */}
           <div className="mt-6 space-y-4">
             {filteredTuitions.length === 0 ? (
               <div className="rounded-2xl bg-slate-50 p-10 text-center">
-                <p className="text-3xl">📚</p>
-
-                <h3 className="mt-3 font-bold text-[#14243a]">
+                <h3 className="font-bold text-[#14243a]">
                   No tuition submissions found
                 </h3>
-
                 <p className="mt-2 text-sm text-slate-500">
-                  Try changing the search or approval filter.
+                  Try changing the search or status filter.
                 </p>
               </div>
             ) : (
@@ -485,13 +451,7 @@ export default function AdminTuitionApprovalPage() {
                           {capitalize(tuition.approvalStatus)}
                         </span>
 
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            tuition.isActive
-                              ? "bg-slate-100 text-slate-700"
-                              : "bg-slate-100 text-slate-400"
-                          }`}
-                        >
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
                           {tuition.isActive
                             ? "Active"
                             : "Inactive"}
@@ -507,7 +467,7 @@ export default function AdminTuitionApprovalPage() {
                       </h3>
 
                       <p className="mt-2 text-sm text-slate-600">
-                        {tuition.subject} · {tuition.classLevel}
+                        {tuition.subject} | {tuition.classLevel}
                       </p>
 
                       <p className="mt-2 text-sm text-slate-500">
@@ -518,13 +478,13 @@ export default function AdminTuitionApprovalPage() {
                       </p>
 
                       <p className="mt-1 text-sm text-slate-500">
-                        {tuition.mode} · {tuition.location}
+                        {tuition.mode} | {tuition.location}
                       </p>
 
                       <p className="mt-3 text-sm font-bold text-[#14243a]">
                         {formatMoney(tuition.monthlyFee)}
                         <span className="font-normal text-slate-500">
-                          {" "}/ month ·{" "}
+                          {" "}/ month |{" "}
                           {tuition.daysPerWeek} days/week
                         </span>
                       </p>
@@ -539,7 +499,7 @@ export default function AdminTuitionApprovalPage() {
                       <button
                         type="button"
                         onClick={() =>
-                          setSelectedTuitionId(tuition.id)
+                          setSelectedId(tuition.id)
                         }
                         className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
                       >
@@ -589,161 +549,126 @@ export default function AdminTuitionApprovalPage() {
             )}
           </div>
         </section>
-      </div>
 
-      {/* Tuition details modal */}
-      {selectedTuition && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14243a]/70 p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="tuition-details-heading"
-            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white p-6 shadow-xl"
-          >
-            <div className="flex items-center justify-between gap-4">
-              <h2
-                id="tuition-details-heading"
-                className="text-xl font-extrabold text-[#14243a]"
-              >
-                Tuition Details
-              </h2>
-
-              <button
-                type="button"
-                aria-label="Close tuition details"
-                onClick={() => setSelectedTuitionId(null)}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              {[
-                ["Tuition ID", selectedTuition.id],
-                ["Title", selectedTuition.title],
-                ["Tutor Name", selectedTuition.tutorName],
-                ["Tutor Email", selectedTuition.tutorEmail],
-                ["Subject", selectedTuition.subject],
-                ["Class Level", selectedTuition.classLevel],
-                ["Mode", selectedTuition.mode],
-                ["Location", selectedTuition.location],
-                [
-                  "Monthly Fee",
-                  formatMoney(selectedTuition.monthlyFee),
-                ],
-                [
-                  "Days Per Week",
-                  String(selectedTuition.daysPerWeek),
-                ],
-                [
-                  "Approval Status",
-                  capitalize(
-                    selectedTuition.approvalStatus
-                  ),
-                ],
-                [
-                  "Active Status",
-                  selectedTuition.isActive
-                    ? "Active"
-                    : "Inactive",
-                ],
-                [
-                  "Submitted",
-                  formatDate(selectedTuition.createdAt),
-                ],
-                ["Description", selectedTuition.description],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="border-b border-slate-100 pb-3"
+        {selectedTuition && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#14243a]/70 p-4">
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="tuition-details-heading"
+              className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white p-6 shadow-xl"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <h2
+                  id="tuition-details-heading"
+                  className="text-xl font-extrabold text-[#14243a]"
                 >
-                  <p className="text-xs font-bold text-slate-400">
-                    {label}
-                  </p>
+                  Tuition Details
+                </h2>
 
-                  <p className="mt-1 break-words text-sm font-medium leading-6 text-[#14243a]">
-                    {value}
-                  </p>
-                </div>
-              ))}
-            </div>
+                <button
+                  type="button"
+                  aria-label="Close tuition details"
+                  onClick={() => setSelectedId(null)}
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                >
+                  <X size={20} />
+                </button>
+              </div>
 
-            <button
-              type="button"
-              onClick={() => setSelectedTuitionId(null)}
-              className="mt-6 w-full rounded-xl bg-[#14243a] px-5 py-3 text-sm font-bold text-white"
-            >
-              Close Details
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Approval confirmation modal */}
-      {confirmation && confirmationTuition && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14243a]/70 p-4">
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="approval-confirm-title"
-            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl"
-          >
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-[#e97c53]">
-              <ShieldCheck size={24} />
-            </div>
-
-            <h2
-              id="approval-confirm-title"
-              className="text-xl font-extrabold text-[#14243a]"
-            >
-              {confirmation.nextStatus === "approved"
-                ? "Approve Tuition?"
-                : "Reject Tuition?"}
-            </h2>
-
-            <p className="mt-3 text-sm leading-7 text-slate-600">
-              Are you sure you want to{" "}
-              <strong>{confirmation.nextStatus}</strong>
-              {" "}this tuition?
-            </p>
-
-            <p className="mt-2 text-sm font-semibold text-[#14243a]">
-              {confirmationTuition.title}
-            </p>
-
-            <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-              Demo only. No actual tuition record or
-              public listing will be updated.
-            </p>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmation(null)}
-                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
+              <div className="mt-6 space-y-4">
+                {[
+                  ["Tuition ID", selectedTuition.id],
+                  ["Title", selectedTuition.title],
+                  ["Tutor Name", selectedTuition.tutorName],
+                  ["Tutor Email", selectedTuition.tutorEmail],
+                  ["Subject", selectedTuition.subject],
+                  ["Class Level", selectedTuition.classLevel],
+                  ["Mode", selectedTuition.mode],
+                  ["Location", selectedTuition.location],
+                  [
+                    "Monthly Fee",
+                    formatMoney(selectedTuition.monthlyFee),
+                  ],
+                  [
+                    "Days Per Week",
+                    String(selectedTuition.daysPerWeek),
+                  ],
+                  [
+                    "Approval Status",
+                    capitalize(selectedTuition.approvalStatus),
+                  ],
+                  [
+                    "Active Status",
+                    selectedTuition.isActive
+                      ? "Active"
+                      : "Inactive",
+                  ],
+                  [
+                    "Submitted",
+                    formatDate(selectedTuition.createdAt),
+                  ],
+                  ["Description", selectedTuition.description],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="border-b border-slate-100 pb-3"
+                  >
+                    <p className="text-xs font-bold text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 break-words text-sm font-medium leading-6 text-[#14243a]">
+                      {value}
+                    </p>
+                  </div>
+                ))}
+              </div>
 
               <button
                 type="button"
-                onClick={confirmApproval}
-                className={`rounded-xl px-4 py-3 text-sm font-bold text-white ${
-                  confirmation.nextStatus === "approved"
-                    ? "bg-emerald-600 hover:bg-emerald-700"
-                    : "bg-red-600 hover:bg-red-700"
-                }`}
+                onClick={() => setSelectedId(null)}
+                className="mt-6 w-full rounded-xl bg-[#14243a] px-5 py-3 text-sm font-bold text-white"
               >
-                Confirm{" "}
-                {confirmation.nextStatus === "approved"
-                  ? "Approve"
-                  : "Reject"}
+                Close Details
               </button>
-            </div>
+            </section>
           </div>
-        </div>
-      )}
+        )}
+
+        <ConfirmDialog
+          open={Boolean(confirmation && confirmationTuition)}
+          title={
+            confirmation?.nextStatus === "approved"
+              ? "Approve Tuition?"
+              : "Reject Tuition?"
+          }
+          description={
+            confirmation?.nextStatus === "approved"
+              ? "Approve this sample tuition? The change will apply only in this browser session."
+              : "Reject this sample tuition? The change will apply only in this browser session."
+          }
+          confirmLabel={
+            confirmation?.nextStatus === "approved"
+              ? "Approve Tuition"
+              : "Reject Tuition"
+          }
+          variant={
+            confirmation?.nextStatus === "approved"
+              ? "info"
+              : "danger"
+          }
+          onConfirm={confirmApproval}
+          onCancel={() => setConfirmation(null)}
+        >
+          <p className="font-bold">
+            {confirmationTuition?.title}
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            No real tuition record or public listing
+            will be updated.
+          </p>
+        </ConfirmDialog>
+      </div>
     </main>
   );
 }
