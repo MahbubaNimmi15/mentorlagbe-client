@@ -1,8 +1,22 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import {
+  ArrowLeft,
+  BookOpen,
+  CheckCircle2,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
+
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast-provider";
 
 type Approval = "Approved" | "Pending" | "Rejected";
 type Mode = "Online" | "Offline";
@@ -25,7 +39,7 @@ type Tuition = {
 const demoTuitions: Tuition[] = [
   {
     id: "TUI-101",
-    title: "Mathematics Tutor for Class 9–10",
+    title: "Mathematics Tutor for Class 9-10",
     subject: "Mathematics",
     classLevel: "Class 9 - 10",
     mode: "Offline",
@@ -70,8 +84,11 @@ const demoTuitions: Tuition[] = [
 const fieldClass =
   "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100";
 
+const labelClass =
+  "mb-2 block text-sm font-bold text-[#14243a]";
+
 function money(value: number) {
-  return `৳${value.toLocaleString("en-BD")}`;
+  return `BDT ${value.toLocaleString("en-BD")}`;
 }
 
 function ApprovalBadge({ status }: { status: Approval }) {
@@ -90,8 +107,52 @@ function ApprovalBadge({ status }: { status: Approval }) {
   );
 }
 
+function validateTuition(tuition: Tuition): string | null {
+  if (tuition.title.trim().length < 8) {
+    return "Title must contain at least 8 characters.";
+  }
+
+  if (!tuition.subject.trim()) {
+    return "Subject is required.";
+  }
+
+  if (!tuition.classLevel.trim()) {
+    return "Class level is required.";
+  }
+
+  if (
+    tuition.mode === "Offline" &&
+    !tuition.location.trim()
+  ) {
+    return "Location is required for offline tuition.";
+  }
+
+  if (
+    !Number.isInteger(tuition.monthlyFee) ||
+    tuition.monthlyFee <= 0
+  ) {
+    return "Monthly fee must be a positive whole number.";
+  }
+
+  if (
+    !Number.isInteger(tuition.daysPerWeek) ||
+    tuition.daysPerWeek < 1 ||
+    tuition.daysPerWeek > 7
+  ) {
+    return "Days per week must be between 1 and 7.";
+  }
+
+  if (tuition.description.trim().length < 30) {
+    return "Description must contain at least 30 characters.";
+  }
+
+  return null;
+}
+
 export default function MyTuitionsPage() {
-  const [tuitions, setTuitions] = useState<Tuition[]>(
+  const toast = useToast();
+
+  const [tuitions, setTuitions] = useState<Tuition[]>(() =>
     demoTuitions.map((item) => ({ ...item }))
   );
 
@@ -99,36 +160,46 @@ export default function MyTuitionsPage() {
   const [filter, setFilter] = useState<Filter>("All");
 
   const [editing, setEditing] = useState<Tuition | null>(null);
-  const [deleting, setDeleting] = useState<Tuition | null>(null);
-
-  const [message, setMessage] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(
+    null
+  );
   const [editError, setEditError] = useState("");
 
-  const stats = {
-    total: tuitions.length,
-    approved: tuitions.filter((t) => t.approval === "Approved")
-      .length,
-    pending: tuitions.filter((t) => t.approval === "Pending")
-      .length,
-    active: tuitions.filter((t) => t.active).length,
-  };
+  const deleting = tuitions.find(
+    (item) => item.id === deletingId
+  );
+
+  const stats = useMemo(
+    () => ({
+      total: tuitions.length,
+      approved: tuitions.filter(
+        (item) => item.approval === "Approved"
+      ).length,
+      pending: tuitions.filter(
+        (item) => item.approval === "Pending"
+      ).length,
+      active: tuitions.filter(
+        (item) => item.active
+      ).length,
+    }),
+    [tuitions]
+  );
 
   const visibleTuitions = useMemo(() => {
-    const query = search.toLowerCase().trim();
+    const query = search.trim().toLowerCase();
 
     return tuitions.filter((tuition) => {
       const text = [
+        tuition.id,
         tuition.title,
         tuition.subject,
         tuition.classLevel,
         tuition.location,
-        tuition.id,
       ]
         .join(" ")
         .toLowerCase();
 
       const matchesSearch = text.includes(query);
-
       const matchesFilter =
         filter === "All" || tuition.approval === filter;
 
@@ -137,133 +208,168 @@ export default function MyTuitionsPage() {
   }, [tuitions, search, filter]);
 
   function changeActive(id: string) {
-    const target = tuitions.find((t) => t.id === id);
+    const target = tuitions.find(
+      (tuition) => tuition.id === id
+    );
 
-    if (!target) return;
-
-    if (target.approval !== "Approved") {
-      setMessage(
-        "Only approved tuitions can be activated or deactivated."
-      );
+    if (!target) {
+      toast.error({
+        title: "Tuition Not Found",
+        description: "The demo tuition is unavailable.",
+      });
       return;
     }
+
+    if (target.approval !== "Approved") {
+      toast.warning({
+        title: "Approval Required",
+        description:
+          "Only approved tuitions can be activated or deactivated.",
+      });
+      return;
+    }
+
+    const nextActive = !target.active;
 
     setTuitions((previous) =>
       previous.map((tuition) =>
         tuition.id === id
-          ? { ...tuition, active: !tuition.active }
+          ? { ...tuition, active: nextActive }
           : tuition
       )
     );
 
-    setMessage(
-      `Demo status changed to ${
-        target.active ? "Inactive" : "Active"
-      }. This change is not saved to MongoDB.`
-    );
+    toast.success({
+      title: nextActive
+        ? "Demo Tuition Activated"
+        : "Demo Tuition Deactivated",
+      description:
+        `"${target.title}" is now ${
+          nextActive ? "Active" : "Inactive"
+        } in this page only.`,
+    });
   }
 
   function startEdit(tuition: Tuition) {
     setEditing({ ...tuition });
     setEditError("");
-    setMessage("");
   }
 
-  function saveEdit(event: React.FormEvent<HTMLFormElement>) {
+  function updateEdit<K extends keyof Tuition>(
+    field: K,
+    value: Tuition[K]
+  ) {
+    setEditing((current) =>
+      current ? { ...current, [field]: value } : null
+    );
+    setEditError("");
+  }
+
+  function saveEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!editing) return;
 
-    if (editing.title.trim().length < 8) {
-      setEditError("Title must contain at least 8 characters.");
+    const error = validateTuition(editing);
+
+    if (error) {
+      setEditError(error);
+
+      toast.error({
+        title: "Unable to Save Demo Tuition",
+        description: error,
+      });
+
       return;
     }
 
-    if (!editing.subject.trim()) {
-      setEditError("Subject is required.");
-      return;
-    }
-
-    if (!editing.classLevel.trim()) {
-      setEditError("Class level is required.");
-      return;
-    }
-
-    if (
-      editing.mode === "Offline" &&
-      !editing.location.trim()
-    ) {
-      setEditError("Location is required for offline tuition.");
-      return;
-    }
-
-    if (
-      !Number.isInteger(editing.monthlyFee) ||
-      editing.monthlyFee <= 0
-    ) {
-      setEditError("Monthly fee must be a positive whole number.");
-      return;
-    }
-
-    if (
-      !Number.isInteger(editing.daysPerWeek) ||
-      editing.daysPerWeek < 1 ||
-      editing.daysPerWeek > 7
-    ) {
-      setEditError("Days per week must be between 1 and 7.");
-      return;
-    }
-
-    if (editing.description.trim().length < 30) {
-      setEditError(
-        "Description must contain at least 30 characters."
-      );
-      return;
-    }
+    const updated: Tuition = {
+      ...editing,
+      title: editing.title.trim(),
+      subject: editing.subject.trim(),
+      classLevel: editing.classLevel.trim(),
+      location: editing.location.trim(),
+      description: editing.description.trim(),
+    };
 
     setTuitions((previous) =>
       previous.map((tuition) =>
-        tuition.id === editing.id
-          ? {
-              ...editing,
-              title: editing.title.trim(),
-              subject: editing.subject.trim(),
-              classLevel: editing.classLevel.trim(),
-              location: editing.location.trim(),
-              description: editing.description.trim(),
-            }
-          : tuition
+        tuition.id === updated.id ? updated : tuition
       )
     );
 
     setEditing(null);
     setEditError("");
-    setMessage(
-      "Demo tuition updated. Changes are not saved to the database."
+
+    toast.success({
+      title: "Demo Tuition Updated",
+      description:
+        `"${updated.title}" was updated locally. Nothing was saved to MongoDB.`,
+    });
+  }
+
+  function requestDelete(id: string) {
+    const target = tuitions.find(
+      (tuition) => tuition.id === id
     );
+
+    if (!target) {
+      toast.error({
+        title: "Tuition Not Found",
+        description: "The demo listing is unavailable.",
+      });
+      return;
+    }
+
+    setDeletingId(id);
   }
 
   function deleteTuition() {
-    if (!deleting) return;
+    if (!deletingId) return;
+
+    const target = tuitions.find(
+      (tuition) => tuition.id === deletingId
+    );
+
+    if (!target) {
+      setDeletingId(null);
+
+      toast.error({
+        title: "Unable to Delete",
+        description: "The selected demo listing was not found.",
+      });
+
+      return;
+    }
 
     setTuitions((previous) =>
-      previous.filter((tuition) => tuition.id !== deleting.id)
+      previous.filter((tuition) => tuition.id !== deletingId)
     );
 
-    setMessage(
-      "Demo tuition removed from the current browser session."
-    );
-    setDeleting(null);
+    setDeletingId(null);
+
+    toast.success({
+      title: "Demo Tuition Removed",
+      description:
+        `"${target.title}" was removed from the current page only. No database record was deleted.`,
+    });
   }
 
   function resetDemo() {
-    setTuitions(demoTuitions.map((tuition) => ({ ...tuition })));
+    setTuitions(
+      demoTuitions.map((tuition) => ({ ...tuition }))
+    );
     setSearch("");
     setFilter("All");
     setEditing(null);
-    setDeleting(null);
+    setDeletingId(null);
     setEditError("");
-    setMessage("Demo listings restored.");
+
+    toast.info({
+      title: "Demo Listings Restored",
+      description:
+        "The original three sample tuition listings are available again.",
+    });
   }
 
   return (
@@ -274,9 +380,10 @@ export default function MyTuitionsPage() {
           <div>
             <Link
               href="/dashboard/tutor"
-              className="text-sm font-semibold text-slate-500 hover:text-[#e97c53]"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-[#e97c53]"
             >
-              ← Tutor Overview
+              <ArrowLeft size={17} />
+              Tutor Overview
             </Link>
 
             <p className="mt-5 text-xs font-bold uppercase tracking-widest text-[#e97c53]">
@@ -294,18 +401,19 @@ export default function MyTuitionsPage() {
 
           <Link
             href="/dashboard/tutor/post-tuition"
-            className="rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white hover:bg-[#d96c45]"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white hover:bg-[#d96c45]"
           >
-            + Post New Tuition
+            <Plus size={18} />
+            Post New Tuition
           </Link>
         </header>
 
-        {/* Demo warning */}
+        {/* Demo notice */}
         <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm leading-6 text-orange-900">
           <strong>Demo Mode:</strong> These are sample tuition
           listings. Changes work only while this page is open.
-          Refreshing restores the original records. Nothing is
-          saved to MongoDB.
+          Refreshing restores the original records. Nothing
+          is saved to MongoDB.
         </div>
 
         {/* Statistics */}
@@ -323,7 +431,6 @@ export default function MyTuitionsPage() {
               <p className="text-xs font-semibold text-slate-500">
                 {label}
               </p>
-
               <p className="mt-3 text-3xl font-extrabold text-[#14243a]">
                 {value}
               </p>
@@ -340,29 +447,22 @@ export default function MyTuitionsPage() {
               </h2>
 
               <p className="mt-1 text-xs text-slate-500">
-                Showing {visibleTuitions.length} of {tuitions.length}
-                {" "}records
+                Showing {visibleTuitions.length} of{" "}
+                {tuitions.length} records
               </p>
             </div>
 
             <button
               type="button"
               onClick={resetDemo}
-              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
             >
+              <RotateCcw size={15} />
               Reset Demo
             </button>
           </div>
 
-          {message && (
-            <p
-              role="status"
-              className="mb-5 rounded-xl bg-[#e3f4e8] p-4 text-sm font-medium text-[#27664a]"
-            >
-              {message}
-            </p>
-          )}
-
+          {/* Filters */}
           <div className="mb-6 grid gap-3 sm:grid-cols-[1fr_190px]">
             <div>
               <label htmlFor="search" className="sr-only">
@@ -371,10 +471,13 @@ export default function MyTuitionsPage() {
 
               <input
                 id="search"
+                type="search"
                 className={fieldClass}
                 placeholder="Search title, subject or location..."
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
               />
             </div>
 
@@ -399,13 +502,19 @@ export default function MyTuitionsPage() {
             </div>
           </div>
 
+          {/* Tuition cards */}
           <div className="space-y-4">
             {visibleTuitions.length === 0 ? (
               <div className="rounded-2xl bg-slate-50 p-10 text-center">
-                <p className="text-3xl">📚</p>
+                <BookOpen
+                  size={36}
+                  className="mx-auto text-slate-400"
+                />
+
                 <p className="mt-3 font-bold text-[#14243a]">
                   No tuition listings found
                 </p>
+
                 <p className="mt-2 text-sm text-slate-500">
                   Try changing your search or filter.
                 </p>
@@ -419,7 +528,9 @@ export default function MyTuitionsPage() {
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap gap-2">
-                        <ApprovalBadge status={tuition.approval} />
+                        <ApprovalBadge
+                          status={tuition.approval}
+                        />
 
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-bold ${
@@ -428,7 +539,9 @@ export default function MyTuitionsPage() {
                               : "bg-slate-100 text-slate-600"
                           }`}
                         >
-                          {tuition.active ? "Active" : "Inactive"}
+                          {tuition.active
+                            ? "Active"
+                            : "Inactive"}
                         </span>
                       </div>
 
@@ -441,17 +554,19 @@ export default function MyTuitionsPage() {
                       </h3>
 
                       <p className="mt-2 text-sm text-slate-600">
-                        {tuition.subject} · {tuition.classLevel}
+                        {tuition.subject} |{" "}
+                        {tuition.classLevel}
                       </p>
 
                       <p className="mt-1 text-sm text-slate-500">
-                        {tuition.mode} · {tuition.location}
+                        {tuition.mode} | {tuition.location}
                       </p>
 
                       <p className="mt-3 text-sm font-bold text-[#14243a]">
                         {money(tuition.monthlyFee)}
                         <span className="font-normal text-slate-500">
-                          {" "}/ month · {tuition.daysPerWeek} days/week
+                          {" "}/ month |{" "}
+                          {tuition.daysPerWeek} days/week
                         </span>
                       </p>
                     </div>
@@ -460,25 +575,36 @@ export default function MyTuitionsPage() {
                       <button
                         type="button"
                         onClick={() => startEdit(tuition)}
-                        className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
                       >
+                        <Pencil size={14} />
                         Edit
                       </button>
 
                       <button
                         type="button"
-                        disabled={tuition.approval !== "Approved"}
-                        onClick={() => changeActive(tuition.id)}
-                        className="rounded-xl border border-emerald-200 px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={
+                          tuition.approval !== "Approved"
+                        }
+                        onClick={() =>
+                          changeActive(tuition.id)
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        {tuition.active ? "Deactivate" : "Activate"}
+                        <CheckCircle2 size={14} />
+                        {tuition.active
+                          ? "Deactivate"
+                          : "Activate"}
                       </button>
 
                       <button
                         type="button"
-                        onClick={() => setDeleting(tuition)}
-                        className="rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                        onClick={() =>
+                          requestDelete(tuition.id)
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
                       >
+                        <Trash2 size={14} />
                         Delete
                       </button>
                     </div>
@@ -494,10 +620,10 @@ export default function MyTuitionsPage() {
         </section>
       </div>
 
-      {/* Edit Modal */}
+      {/* Edit modal */}
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14243a]/70 p-4">
-          <div
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#14243a]/70 p-4">
+          <section
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-tuition-title"
@@ -517,86 +643,99 @@ export default function MyTuitionsPage() {
                 aria-label="Close edit form"
                 className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
               >
-                ✕
+                <X size={20} />
               </button>
             </div>
 
             <p className="mt-2 text-xs text-orange-700">
-              Demo editing only — no database update.
+              Demo editing only - no database update.
             </p>
 
-            <form onSubmit={saveEdit} className="mt-5 space-y-4">
+            <form
+              onSubmit={saveEdit}
+              noValidate
+              className="mt-5 space-y-4"
+            >
               <div>
-                <label htmlFor="edit-title" className="mb-2 block text-sm font-bold">
+                <label
+                  htmlFor="edit-title"
+                  className={labelClass}
+                >
                   Title
                 </label>
+
                 <input
                   id="edit-title"
                   className={fieldClass}
                   value={editing.title}
                   onChange={(event) =>
-                    setEditing({
-                      ...editing,
-                      title: event.target.value,
-                    })
+                    updateEdit("title", event.target.value)
                   }
-                  required
-                  minLength={8}
                 />
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="edit-subject" className="mb-2 block text-sm font-bold">
+                  <label
+                    htmlFor="edit-subject"
+                    className={labelClass}
+                  >
                     Subject
                   </label>
+
                   <input
                     id="edit-subject"
                     className={fieldClass}
                     value={editing.subject}
                     onChange={(event) =>
-                      setEditing({
-                        ...editing,
-                        subject: event.target.value,
-                      })
+                      updateEdit(
+                        "subject",
+                        event.target.value
+                      )
                     }
-                    required
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="edit-class" className="mb-2 block text-sm font-bold">
+                  <label
+                    htmlFor="edit-class"
+                    className={labelClass}
+                  >
                     Class Level
                   </label>
+
                   <input
                     id="edit-class"
                     className={fieldClass}
                     value={editing.classLevel}
                     onChange={(event) =>
-                      setEditing({
-                        ...editing,
-                        classLevel: event.target.value,
-                      })
+                      updateEdit(
+                        "classLevel",
+                        event.target.value
+                      )
                     }
-                    required
                   />
                 </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="edit-mode" className="mb-2 block text-sm font-bold">
+                  <label
+                    htmlFor="edit-mode"
+                    className={labelClass}
+                  >
                     Mode
                   </label>
+
                   <select
                     id="edit-mode"
                     className={fieldClass}
                     value={editing.mode}
                     onChange={(event) =>
-                      setEditing({
-                        ...editing,
-                        mode: event.target.value as Mode,
-                      })
+                      updateEdit(
+                        "mode",
+                        event.target.value as Mode
+                      )
                     }
                   >
                     <option value="Online">Online</option>
@@ -605,29 +744,36 @@ export default function MyTuitionsPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="edit-location" className="mb-2 block text-sm font-bold">
+                  <label
+                    htmlFor="edit-location"
+                    className={labelClass}
+                  >
                     Location
                   </label>
+
                   <input
                     id="edit-location"
                     className={fieldClass}
                     value={editing.location}
                     onChange={(event) =>
-                      setEditing({
-                        ...editing,
-                        location: event.target.value,
-                      })
+                      updateEdit(
+                        "location",
+                        event.target.value
+                      )
                     }
-                    required={editing.mode === "Offline"}
                   />
                 </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="edit-fee" className="mb-2 block text-sm font-bold">
-                    Monthly Fee (৳)
+                  <label
+                    htmlFor="edit-fee"
+                    className={labelClass}
+                  >
+                    Monthly Fee (BDT)
                   </label>
+
                   <input
                     id="edit-fee"
                     type="number"
@@ -636,27 +782,33 @@ export default function MyTuitionsPage() {
                     className={fieldClass}
                     value={editing.monthlyFee}
                     onChange={(event) =>
-                      setEditing({
-                        ...editing,
-                        monthlyFee: Number(event.target.value),
-                      })
+                      updateEdit(
+                        "monthlyFee",
+                        event.target.value === ""
+                          ? 0
+                          : Number(event.target.value)
+                      )
                     }
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="edit-days" className="mb-2 block text-sm font-bold">
+                  <label
+                    htmlFor="edit-days"
+                    className={labelClass}
+                  >
                     Days Per Week
                   </label>
+
                   <select
                     id="edit-days"
                     className={fieldClass}
                     value={editing.daysPerWeek}
                     onChange={(event) =>
-                      setEditing({
-                        ...editing,
-                        daysPerWeek: Number(event.target.value),
-                      })
+                      updateEdit(
+                        "daysPerWeek",
+                        Number(event.target.value)
+                      )
                     }
                   >
                     {[1, 2, 3, 4, 5, 6, 7].map((day) => (
@@ -669,32 +821,37 @@ export default function MyTuitionsPage() {
               </div>
 
               <div>
-                <label htmlFor="edit-description" className="mb-2 block text-sm font-bold">
+                <label
+                  htmlFor="edit-description"
+                  className={labelClass}
+                >
                   Description
                 </label>
+
                 <textarea
                   id="edit-description"
                   rows={4}
-                  minLength={30}
-                  required
                   className={fieldClass}
                   value={editing.description}
                   onChange={(event) =>
-                    setEditing({
-                      ...editing,
-                      description: event.target.value,
-                    })
+                    updateEdit(
+                      "description",
+                      event.target.value
+                    )
                   }
                 />
               </div>
 
               {editError && (
-                <p role="alert" className="text-sm font-semibold text-red-600">
+                <p
+                  role="alert"
+                  className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-600"
+                >
                   {editError}
                 </p>
               )}
 
-              <div className="flex justify-end gap-3">
+              <div className="flex flex-wrap justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setEditing(null)}
@@ -705,55 +862,36 @@ export default function MyTuitionsPage() {
 
                 <button
                   type="submit"
-                  className="rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white"
+                  className="rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white hover:bg-[#d96c45]"
                 >
                   Save Demo Changes
                 </button>
               </div>
             </form>
-          </div>
+          </section>
         </div>
       )}
 
-      {/* Delete Confirmation */}
-      {deleting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14243a]/70 p-4">
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="delete-title"
-            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl"
-          >
-            <h2 id="delete-title" className="text-xl font-bold text-[#14243a]">
-              Delete Tuition?
-            </h2>
-
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Are you sure you want to remove
-              {" "}<strong>{deleting.title}</strong> from
-              this demo session?
-            </p>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setDeleting(null)}
-                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={deleteTuition}
-                className="rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white hover:bg-red-700"
-              >
-                Delete Demo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Reusable delete confirmation */}
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        title="Delete Tuition?"
+        description={
+          deleting
+            ? `Are you sure you want to remove "${deleting.title}" from this demo session?`
+            : "Confirm deletion of the selected demo tuition."
+        }
+        confirmLabel="Delete Demo Tuition"
+        variant="danger"
+        onCancel={() => setDeletingId(null)}
+        onConfirm={deleteTuition}
+      >
+        <p className="text-sm">
+          This action removes only the sample listing
+          from the current page. No MongoDB record
+          will be deleted.
+        </p>
+      </ConfirmDialog>
     </main>
   );
 }
