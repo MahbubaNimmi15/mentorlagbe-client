@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import { ToastProvider } from "@/components/ui/toast-provider";
 
 import "./globals.css";
 
@@ -24,9 +25,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-[#fff9f0] text-[#14243a] antialiased">
-        <SiteHeader />
-        {children}
-        <SiteFooter />
+        <ToastProvider>
+          <SiteHeader />
+          {children}
+          <SiteFooter />
+        </ToastProvider>
       </body>
     </html>
   );
