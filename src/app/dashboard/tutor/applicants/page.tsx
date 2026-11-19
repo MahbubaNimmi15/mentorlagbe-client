@@ -1,10 +1,27 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ClipboardList,
+  Eye,
+  RotateCcw,
+  Search,
+  Users,
+  X,
+  XCircle,
+} from "lucide-react";
 
-type ApplicationStatus = "pending" | "accepted" | "rejected";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast-provider";
+
+type ApplicationStatus =
+  | "pending"
+  | "accepted"
+  | "rejected";
 
 type Application = {
   id: string;
@@ -21,17 +38,23 @@ type Application = {
   status: ApplicationStatus;
 };
 
+type Confirmation = {
+  id: string;
+  status: "accepted" | "rejected";
+};
+
 const initialApplications: Application[] = [
   {
     id: "APP-101",
     studentName: "Nusrat Jahan",
     studentEmail: "nusrat@example.com",
     studentPhone: "01700000001",
-    tuitionTitle: "Mathematics Tutor for Class 9–10",
+    tuitionTitle: "Mathematics Tutor for Class 9-10",
     tuitionId: "TUI-101",
     subject: "Mathematics",
     monthlyFee: 5000,
-    preferredSchedule: "Sunday, Tuesday, Thursday - 6:00 PM",
+    preferredSchedule:
+      "Sunday, Tuesday, Thursday - 6:00 PM",
     studentNote:
       "I need help with algebra, geometry and SSC exam preparation.",
     appliedAt: "2026-11-15",
@@ -42,11 +65,12 @@ const initialApplications: Application[] = [
     studentName: "Rafi Ahmed",
     studentEmail: "rafi@example.com",
     studentPhone: "01800000002",
-    tuitionTitle: "Mathematics Tutor for Class 9–10",
+    tuitionTitle: "Mathematics Tutor for Class 9-10",
     tuitionId: "TUI-101",
     subject: "Mathematics",
     monthlyFee: 5000,
-    preferredSchedule: "Monday, Wednesday - 5:00 PM",
+    preferredSchedule:
+      "Monday, Wednesday - 5:00 PM",
     studentNote:
       "I want regular practice sessions to improve my mathematics skills.",
     appliedAt: "2026-11-14",
@@ -61,7 +85,8 @@ const initialApplications: Application[] = [
     tuitionId: "TUI-102",
     subject: "English",
     monthlyFee: 3500,
-    preferredSchedule: "Friday and Saturday - 7:00 PM",
+    preferredSchedule:
+      "Friday and Saturday - 7:00 PM",
     studentNote:
       "I would like structured English grammar and speaking lessons.",
     appliedAt: "2026-11-12",
@@ -75,33 +100,53 @@ const statusStyles: Record<ApplicationStatus, string> = {
   rejected: "bg-red-100 text-red-800",
 };
 
-function formatMoney(value: number): string {
-  return `৳${value.toLocaleString("en-BD")}`;
+function formatMoney(value: number) {
+  return `BDT ${value.toLocaleString("en-BD")}`;
 }
 
-function formatDate(value: string): string {
-  return new Date(`${value}T12:00:00`).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+function formatDate(value: string) {
+  return new Date(`${value}T12:00:00`).toLocaleDateString(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  );
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 export default function TutorApplicantsPage() {
-  const [applications, setApplications] = useState<Application[]>(
-    () => initialApplications.map((item) => ({ ...item }))
-  );
+  const toast = useToast();
+
+  const [applications, setApplications] = useState<
+    Application[]
+  >(() => initialApplications.map((item) => ({ ...item })));
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selected, setSelected] = useState<Application | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    null
+  );
+  const [confirmation, setConfirmation] =
+    useState<Confirmation | null>(null);
 
-  const [confirmation, setConfirmation] = useState<{
-    id: string;
-    status: "accepted" | "rejected";
-  } | null>(null);
+  const selected = applications.find(
+    (item) => item.id === selectedId
+  );
 
-  const [notice, setNotice] = useState("");
+  const pendingConfirmation = confirmation
+    ? applications.find(
+        (item) => item.id === confirmation.id
+      )
+    : null;
 
   const stats = useMemo(
     () => ({
@@ -135,17 +180,43 @@ export default function TutorApplicantsPage() {
         .toLowerCase();
 
       const matchesSearch = searchableText.includes(query);
-
       const matchesStatus =
-        statusFilter === "all" || item.status === statusFilter;
+        statusFilter === "all" ||
+        item.status === statusFilter;
 
       return matchesSearch && matchesStatus;
     });
   }, [applications, search, statusFilter]);
 
-  const pendingConfirmation = confirmation
-    ? applications.find((item) => item.id === confirmation.id)
-    : null;
+  function requestStatusChange(
+    id: string,
+    status: "accepted" | "rejected"
+  ) {
+    const application = applications.find(
+      (item) => item.id === id
+    );
+
+    if (!application) {
+      toast.error({
+        title: "Application Not Found",
+        description:
+          "The selected demo application is unavailable.",
+      });
+      return;
+    }
+
+    if (application.status !== "pending") {
+      toast.warning({
+        title: "Status Already Decided",
+        description:
+          "Only pending applications can be accepted or rejected in this demo.",
+      });
+      return;
+    }
+
+    setSelectedId(null);
+    setConfirmation({ id, status });
+  }
 
   function updateStatus() {
     if (!confirmation) return;
@@ -156,23 +227,41 @@ export default function TutorApplicantsPage() {
 
     if (!application || application.status !== "pending") {
       setConfirmation(null);
+
+      toast.error({
+        title: "Unable to Update Status",
+        description:
+          "The application is unavailable or no longer pending.",
+      });
+
       return;
     }
+
+    const nextStatus = confirmation.status;
 
     setApplications((current) =>
       current.map((item) =>
         item.id === confirmation.id
-          ? { ...item, status: confirmation.status }
+          ? { ...item, status: nextStatus }
           : item
       )
     );
 
-    setNotice(
-      `${application.studentName}'s application was ${confirmation.status} in Demo Mode.`
-    );
-
-    setSelected(null);
     setConfirmation(null);
+
+    if (nextStatus === "accepted") {
+      toast.success({
+        title: "Demo Application Accepted",
+        description:
+          `${application.studentName}'s status changed to Accepted in local preview only.`,
+      });
+    } else {
+      toast.warning({
+        title: "Demo Application Rejected",
+        description:
+          `${application.studentName}'s status changed to Rejected in local preview only.`,
+      });
+    }
   }
 
   function resetDemo() {
@@ -181,25 +270,31 @@ export default function TutorApplicantsPage() {
     );
     setSearch("");
     setStatusFilter("all");
-    setSelected(null);
+    setSelectedId(null);
     setConfirmation(null);
-    setNotice("Original demo applications restored.");
+
+    toast.info({
+      title: "Demo Applications Restored",
+      description:
+        "All sample applications have been reset to their original statuses.",
+    });
   }
 
   return (
     <main className="min-h-screen bg-[#fff9f0] px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-6xl space-y-7">
-        {/* Page heading */}
+        {/* Heading */}
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <Link
               href="/dashboard/tutor"
-              className="text-sm font-semibold text-slate-500 hover:text-[#e97c53]"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-[#e97c53]"
             >
-              ← Back to Tutor Overview
+              <ArrowLeft size={17} />
+              Tutor Dashboard
             </Link>
 
-            <p className="mt-5 text-xs font-bold uppercase tracking-widest text-[#e97c53]">
+            <p className="mt-5 text-xs font-bold uppercase tracking-[0.15em] text-[#e97c53]">
               Tutor Workspace
             </p>
 
@@ -208,112 +303,129 @@ export default function TutorApplicantsPage() {
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Review student applications and manage enrollment requests.
+              Review applications and manage demo statuses.
             </p>
           </div>
 
-          <Link
-            href="/dashboard/tutor/my-tuitions"
-            className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-[#14243a] hover:border-[#e97c53]"
+          <button
+            type="button"
+            onClick={resetDemo}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#14243a] hover:bg-slate-50"
           >
-            My Tuitions
-          </Link>
+            <RotateCcw size={17} />
+            Reset Demo
+          </button>
         </header>
 
-        {/* Demo warning */}
-        <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm leading-6 text-orange-900">
-          <strong>Demo Mode:</strong> These applications are sample
-          records only. Accepting or rejecting changes the current
-          browser session. Refreshing restores the original records.
-          No database or student account is updated.
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+          <strong>Frontend Preview:</strong> Accept and
+          Reject actions only update local demo state.
+          No student will be contacted, and no database
+          record will be changed.
         </div>
 
         {/* Statistics */}
-        <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            { label: "Total Applicants", value: stats.total },
-            { label: "Pending", value: stats.pending },
-            { label: "Accepted", value: stats.accepted },
-            { label: "Rejected", value: stats.rejected },
-          ].map((item) => (
-            <article
-              key={item.label}
-              className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"
-            >
-              <p className="text-sm font-semibold text-slate-500">
-                {item.label}
-              </p>
+            {
+              label: "Total Applications",
+              value: stats.total,
+              icon: Users,
+              color: "bg-slate-100 text-[#14243a]",
+            },
+            {
+              label: "Pending Review",
+              value: stats.pending,
+              icon: ClipboardList,
+              color: "bg-amber-100 text-amber-700",
+            },
+            {
+              label: "Accepted",
+              value: stats.accepted,
+              icon: CheckCircle2,
+              color: "bg-emerald-100 text-emerald-700",
+            },
+            {
+              label: "Rejected",
+              value: stats.rejected,
+              icon: XCircle,
+              color: "bg-red-100 text-red-700",
+            },
+          ].map((stat) => {
+            const Icon = stat.icon;
 
-              <p className="mt-3 text-3xl font-extrabold text-[#14243a]">
-                {item.value}
-              </p>
-            </article>
-          ))}
-        </section>
+            return (
+              <div
+                key={stat.label}
+                className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-500">
+                    {stat.label}
+                  </p>
 
-        {/* List */}
-        <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+                  <span
+                    className={`rounded-xl p-3 ${stat.color}`}
+                  >
+                    <Icon size={20} />
+                  </span>
+                </div>
+
+                <p className="mt-5 text-3xl font-extrabold text-[#14243a]">
+                  {stat.value}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Search and filters */}
+        <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+          <div className="grid gap-4 md:grid-cols-[1fr_220px]">
             <div>
-              <h2 className="text-xl font-bold text-[#14243a]">
-                Student Applications
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Showing {filteredApplications.length} of{" "}
-                {applications.length} applications
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={resetDemo}
-              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
-            >
-              Reset Demo
-            </button>
-          </div>
-
-          {notice && (
-            <div
-              role="status"
-              className="mt-5 rounded-xl bg-[#e3f4e8] p-4 text-sm font-medium text-emerald-900"
-            >
-              {notice}
-            </div>
-          )}
-
-          {/* Search and filter */}
-          <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_200px]">
-            <div>
-              <label htmlFor="app-search" className="sr-only">
-                Search applications
+              <label
+                htmlFor="applicant-search"
+                className="mb-2 block text-xs font-bold text-slate-600"
+              >
+                Search Applicants
               </label>
 
-              <input
-                id="app-search"
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search student, email, tuition..."
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#e97c53]"
-              />
+              <div className="relative">
+                <Search
+                  size={19}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+
+                <input
+                  id="applicant-search"
+                  type="search"
+                  value={search}
+                  onChange={(event) =>
+                    setSearch(event.target.value)
+                  }
+                  placeholder="Search name, email, subject, application ID..."
+                  className="w-full rounded-xl border border-slate-200 py-3 pl-11 pr-4 text-sm outline-none focus:border-[#e97c53]"
+                />
+              </div>
             </div>
 
             <div>
-              <label htmlFor="app-filter" className="sr-only">
-                Filter application status
+              <label
+                htmlFor="applicant-filter"
+                className="mb-2 block text-xs font-bold text-slate-600"
+              >
+                Filter Status
               </label>
 
               <select
-                id="app-filter"
+                id="applicant-filter"
                 value={statusFilter}
                 onChange={(event) =>
                   setStatusFilter(event.target.value)
                 }
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#e97c53]"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#e97c53]"
               >
-                <option value="all">All Statuses</option>
+                <option value="all">All Applications</option>
                 <option value="pending">Pending</option>
                 <option value="accepted">Accepted</option>
                 <option value="rejected">Rejected</option>
@@ -321,240 +433,257 @@ export default function TutorApplicantsPage() {
             </div>
           </div>
 
-          {/* Application cards */}
-          <div className="mt-6 space-y-4">
-            {filteredApplications.length === 0 ? (
-              <div className="rounded-2xl bg-slate-50 p-10 text-center">
-                <p className="text-3xl">📋</p>
-                <h3 className="mt-3 font-bold text-[#14243a]">
-                  No applications found
-                </h3>
-                <p className="mt-2 text-sm text-slate-500">
-                  Try another search or status filter.
-                </p>
-              </div>
-            ) : (
-              filteredApplications.map((application) => (
-                <article
-                  key={application.id}
-                  className="rounded-2xl border border-slate-200 p-5 hover:border-orange-200"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${
-                            statusStyles[application.status]
-                          }`}
-                        >
-                          {application.status}
-                        </span>
+          <p className="mt-4 text-xs text-slate-500">
+            Showing {filteredApplications.length} of{" "}
+            {applications.length} applications
+          </p>
+        </section>
 
-                        <span className="text-xs text-slate-400">
-                          {application.id}
-                        </span>
-                      </div>
+        {/* Applicant cards */}
+        <section className="space-y-4">
+          {filteredApplications.length === 0 ? (
+            <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center shadow-sm">
+              <Search
+                size={36}
+                className="mx-auto text-slate-300"
+              />
 
-                      <h3 className="mt-3 text-lg font-bold text-[#14243a]">
+              <h2 className="mt-4 text-lg font-bold text-[#14243a]">
+                No Applicants Found
+              </h2>
+
+              <p className="mt-2 text-sm text-slate-500">
+                Try a different search or status filter.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setStatusFilter("all");
+                }}
+                className="mt-5 rounded-xl bg-[#14243a] px-5 py-2.5 text-sm font-bold text-white"
+              >
+                Clear Filters
+              </button>
+            </div>
+          ) : (
+            filteredApplications.map((application) => (
+              <article
+                key={application.id}
+                className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm sm:p-6"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#e3f4e8] text-sm font-extrabold text-emerald-800">
+                      {getInitials(
+                        application.studentName
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-extrabold text-[#14243a]">
                         {application.studentName}
-                      </h3>
+                      </h2>
 
-                      <p className="mt-1 break-all text-sm text-slate-600">
+                      <p className="mt-1 break-words text-sm text-slate-500">
                         {application.studentEmail}
                       </p>
 
-                      <p className="mt-3 text-sm font-semibold text-[#14243a]">
-                        {application.tuitionTitle}
+                      <p className="mt-1 text-xs text-slate-400">
+                        {application.id} | Applied{" "}
+                        {formatDate(application.appliedAt)}
                       </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        {application.subject} ·{" "}
-                        {formatMoney(application.monthlyFee)}/month
-                      </p>
-
-                      <p className="mt-2 text-xs text-slate-400">
-                        Applied {formatDate(application.appliedAt)}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelected(application)}
-                        className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                      >
-                        View Details
-                      </button>
-
-                      {application.status === "pending" && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfirmation({
-                                id: application.id,
-                                status: "accepted",
-                              })
-                            }
-                            className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700"
-                          >
-                            Accept
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfirmation({
-                                id: application.id,
-                                status: "rejected",
-                              })
-                            }
-                            className="rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
                     </div>
                   </div>
-                </article>
-              ))
-            )}
-          </div>
-        </section>
-      </div>
 
-      {/* Student details */}
-      {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14243a]/70 p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="student-details-heading"
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-xl"
-          >
-            <div className="flex items-center justify-between gap-4">
-              <h2
-                id="student-details-heading"
-                className="text-xl font-bold text-[#14243a]"
-              >
-                Student Details
-              </h2>
+                  <span
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${statusStyles[application.status]}`}
+                  >
+                    {application.status}
+                  </span>
+                </div>
 
-              <button
-                type="button"
-                aria-label="Close student details"
-                onClick={() => setSelected(null)}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="mt-5 space-y-4 text-sm">
-              {[
-                ["Name", selected.studentName],
-                ["Email", selected.studentEmail],
-                ["Phone", selected.studentPhone],
-                ["Tuition", selected.tuitionTitle],
-                ["Subject", selected.subject],
-                ["Monthly Fee", formatMoney(selected.monthlyFee)],
-                ["Preferred Schedule", selected.preferredSchedule],
-                ["Applied Date", formatDate(selected.appliedAt)],
-                ["Status", selected.status],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="border-b border-slate-100 pb-3"
-                >
-                  <p className="text-xs font-semibold text-slate-400">
-                    {label}
+                <div className="mt-5 rounded-xl bg-slate-50 p-4">
+                  <p className="text-sm font-bold text-[#14243a]">
+                    {application.tuitionTitle}
                   </p>
-                  <p className="mt-1 break-words font-medium text-[#14243a]">
-                    {value}
+
+                  <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-600">
+                    <span>
+                      Subject: {application.subject}
+                    </span>
+                    <span>
+                      Fee: {formatMoney(application.monthlyFee)}
+                    </span>
+                    <span>
+                      Tuition: {application.tuitionId}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedId(application.id)
+                    }
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-[#14243a] hover:bg-slate-50"
+                  >
+                    <Eye size={17} />
+                    View Details
+                  </button>
+
+                  {application.status === "pending" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          requestStatusChange(
+                            application.id,
+                            "accepted"
+                          )
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
+                      >
+                        <CheckCircle2 size={17} />
+                        Accept
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          requestStatusChange(
+                            application.id,
+                            "rejected"
+                          )
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-bold text-red-700 hover:bg-red-50"
+                      >
+                        <XCircle size={17} />
+                        Reject
+                      </button>
+                    </>
+                  )}
+                </div>
+              </article>
+            ))
+          )}
+        </section>
+
+        {/* Details popup */}
+        {selected && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#14243a]/70 p-4">
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="applicant-details-title"
+              className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#e97c53]">
+                    Application Details
+                  </p>
+                  <h2
+                    id="applicant-details-title"
+                    className="mt-2 text-2xl font-extrabold text-[#14243a]"
+                  >
+                    {selected.studentName}
+                  </h2>
+                </div>
+
+                <button
+                  type="button"
+                  aria-label="Close details"
+                  onClick={() => setSelectedId(null)}
+                  className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+                >
+                  <X size={21} />
+                </button>
+              </div>
+
+              <div className="mt-6 space-y-4 text-sm">
+                {[
+                  ["Application ID", selected.id],
+                  ["Tuition", selected.tuitionTitle],
+                  ["Subject", selected.subject],
+                  ["Monthly Fee", formatMoney(selected.monthlyFee)],
+                  ["Email", selected.studentEmail],
+                  ["Phone", selected.studentPhone],
+                  ["Schedule", selected.preferredSchedule],
+                  ["Applied On", formatDate(selected.appliedAt)],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="border-b border-slate-100 pb-3"
+                  >
+                    <p className="text-xs font-semibold text-slate-500">
+                      {label}
+                    </p>
+                    <p className="mt-1 break-words font-medium text-[#14243a]">
+                      {value}
+                    </p>
+                  </div>
+                ))}
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-500">
+                    Student Note
+                  </p>
+                  <p className="mt-2 leading-7 text-slate-700">
+                    {selected.studentNote}
                   </p>
                 </div>
-              ))}
-
-              <div>
-                <p className="text-xs font-semibold text-slate-400">
-                  Student Note
-                </p>
-                <p className="mt-2 leading-6 text-slate-700">
-                  {selected.studentNote}
-                </p>
               </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setSelected(null)}
-              className="mt-6 w-full rounded-xl bg-[#14243a] px-5 py-3 text-sm font-bold text-white"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Accept / reject confirmation */}
-      {confirmation && pendingConfirmation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#14243a]/70 p-4">
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="confirmation-heading"
-            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl"
-          >
-            <h2
-              id="confirmation-heading"
-              className="text-xl font-bold text-[#14243a]"
-            >
-              {confirmation.status === "accepted"
-                ? "Accept Application?"
-                : "Reject Application?"}
-            </h2>
-
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Are you sure you want to{" "}
-              {confirmation.status === "accepted"
-                ? "accept"
-                : "reject"}{" "}
-              <strong>{pendingConfirmation.studentName}</strong>
-              {"'s"} application?
-            </p>
-
-            <p className="mt-3 rounded-xl bg-orange-50 p-3 text-xs text-orange-800">
-              This action affects demo data only.
-            </p>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmation(null)}
-                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700"
-              >
-                Cancel
-              </button>
 
               <button
                 type="button"
-                onClick={updateStatus}
-                className={`rounded-xl px-4 py-3 text-sm font-bold text-white ${
-                  confirmation.status === "accepted"
-                    ? "bg-emerald-600 hover:bg-emerald-700"
-                    : "bg-red-600 hover:bg-red-700"
-                }`}
+                onClick={() => setSelectedId(null)}
+                className="mt-7 w-full rounded-xl bg-[#14243a] px-5 py-3 text-sm font-bold text-white hover:bg-[#294562]"
               >
-                Confirm{" "}
-                {confirmation.status === "accepted"
-                  ? "Accept"
-                  : "Reject"}
+                Close Details
               </button>
-            </div>
+            </section>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Confirmation dialog */}
+        <ConfirmDialog
+          open={Boolean(confirmation && pendingConfirmation)}
+          title={
+            confirmation?.status === "accepted"
+              ? "Accept Application?"
+              : "Reject Application?"
+          }
+          description={
+            confirmation?.status === "accepted"
+              ? `Accept ${pendingConfirmation?.studentName ?? "this student's"} application? This only changes the local demo status.`
+              : `Reject ${pendingConfirmation?.studentName ?? "this student's"} application? This only changes the local demo status.`
+          }
+          confirmLabel={
+            confirmation?.status === "accepted"
+              ? "Accept Application"
+              : "Reject Application"
+          }
+          variant={
+            confirmation?.status === "accepted"
+              ? "info"
+              : "warning"
+          }
+          onCancel={() => setConfirmation(null)}
+          onConfirm={updateStatus}
+        >
+          <p>
+            <strong>Tuition:</strong>{" "}
+            {pendingConfirmation?.tuitionTitle}
+          </p>
+          <p className="mt-2">
+            <strong>Current status:</strong>{" "}
+            {pendingConfirmation?.status ?? "Unknown"}
+          </p>
+        </ConfirmDialog>
+      </div>
     </main>
   );
 }
