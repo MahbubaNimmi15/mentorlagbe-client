@@ -1,22 +1,19 @@
 
 "use client";
 
-import {
-  ChangeEvent,
-  FormEvent,
-  useEffect,
-  useState,
-} from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import {
   ArrowLeft,
   Camera,
-  CheckCircle2,
   RotateCcw,
   Save,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
+
+import { useToast } from "@/components/ui/toast-provider";
 
 type UserRole = "student" | "tutor" | "admin";
 
@@ -30,6 +27,12 @@ type Profile = {
   imageUrl: string;
 };
 
+type EditableField = "name" | "phone" | "bio" | "imageUrl";
+
+type ProfileErrors = Partial<
+  Record<EditableField | "image", string>
+>;
+
 const initialProfile: Profile = {
   name: "Demo MentorLagbe User",
   email: "demo@example.com",
@@ -40,6 +43,9 @@ const initialProfile: Profile = {
   imageUrl: "",
 };
 
+const fieldStyle =
+  "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#14243a] outline-none transition focus:border-[#e97c53] focus:ring-2 focus:ring-orange-100";
+
 function getInitials(name: string) {
   return name
     .trim()
@@ -49,10 +55,49 @@ function getInitials(name: string) {
     .join("");
 }
 
-const fieldStyle =
-  "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#14243a] outline-none transition focus:border-[#e97c53] focus:ring-2 focus:ring-orange-100";
+function validateProfile(profile: Profile): ProfileErrors {
+  const nextErrors: ProfileErrors = {};
+
+  if (profile.name.trim().length < 3) {
+    nextErrors.name =
+      "Full name must contain at least 3 characters.";
+  }
+
+  if (
+    profile.phone.trim() &&
+    !/^(?:\+?88)?01[3-9]\d{8}$/.test(profile.phone.trim())
+  ) {
+    nextErrors.phone =
+      "Enter a valid Bangladesh mobile number.";
+  }
+
+  if (profile.bio.trim().length > 500) {
+    nextErrors.bio =
+      "Bio cannot contain more than 500 characters.";
+  }
+
+  if (profile.imageUrl.trim()) {
+    try {
+      const url = new URL(profile.imageUrl.trim());
+
+      if (
+        url.protocol !== "http:" &&
+        url.protocol !== "https:"
+      ) {
+        nextErrors.imageUrl =
+          "Enter a valid HTTP or HTTPS image URL.";
+      }
+    } catch {
+      nextErrors.imageUrl = "Enter a valid image URL.";
+    }
+  }
+
+  return nextErrors;
+}
 
 export default function UpdateProfilePage() {
+  const toast = useToast();
+
   const [profile, setProfile] = useState<Profile>({
     ...initialProfile,
   });
@@ -62,14 +107,15 @@ export default function UpdateProfilePage() {
   });
 
   const [previewImage, setPreviewImage] = useState("");
-  const [selectedFileName, setSelectedFileName] = useState("");
+  const [savedPreviewImage, setSavedPreviewImage] =
+    useState("");
+
+  const [selectedFileName, setSelectedFileName] =
+    useState("");
+
   const [imageFailed, setImageFailed] = useState(false);
 
-  const [errors, setErrors] = useState<
-    Record<string, string>
-  >({});
-
-  const [notice, setNotice] = useState("");
+  const [errors, setErrors] = useState<ProfileErrors>({});
 
   useEffect(() => {
     return () => {
@@ -83,7 +129,7 @@ export default function UpdateProfilePage() {
   const hasImage = Boolean(displayedImage) && !imageFailed;
 
   function updateField(
-    field: "name" | "phone" | "bio" | "imageUrl",
+    field: EditableField,
     value: string
   ) {
     setProfile((current) => ({
@@ -93,10 +139,8 @@ export default function UpdateProfilePage() {
 
     setErrors((current) => ({
       ...current,
-      [field]: "",
+      [field]: undefined,
     }));
-
-    setNotice("");
 
     if (field === "imageUrl") {
       setImageFailed(false);
@@ -106,7 +150,9 @@ export default function UpdateProfilePage() {
   function selectImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
 
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     const allowedTypes = [
       "image/jpeg",
@@ -115,19 +161,36 @@ export default function UpdateProfilePage() {
     ];
 
     if (!allowedTypes.includes(file.type)) {
+      const message =
+        "Only JPG, PNG or WebP images are allowed.";
+
       setErrors((current) => ({
         ...current,
-        image: "Only JPG, PNG or WebP images are allowed.",
+        image: message,
       }));
+
+      toast.warning({
+        title: "Unsupported Image Format",
+        description: message,
+      });
+
       event.target.value = "";
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
+      const message = "Image size must not exceed 2 MB.";
+
       setErrors((current) => ({
         ...current,
-        image: "Image size must not exceed 2 MB.",
+        image: message,
       }));
+
+      toast.warning({
+        title: "Image Is Too Large",
+        description: message,
+      });
+
       event.target.value = "";
       return;
     }
@@ -137,59 +200,44 @@ export default function UpdateProfilePage() {
     setPreviewImage(objectUrl);
     setSelectedFileName(file.name);
     setImageFailed(false);
-    setErrors((current) => ({ ...current, image: "" }));
-    setNotice("");
+
+    setProfile((current) => ({
+      ...current,
+      imageUrl: "",
+    }));
+
+    setErrors((current) => ({
+      ...current,
+      image: undefined,
+      imageUrl: undefined,
+    }));
+
+    toast.info({
+      title: "Photo Selected",
+      description:
+        "Your photo is previewed locally. It has not been uploaded.",
+    });
 
     event.target.value = "";
-  }
-
-  function validateProfile() {
-    const nextErrors: Record<string, string> = {};
-
-    if (profile.name.trim().length < 3) {
-      nextErrors.name =
-        "Full name must contain at least 3 characters.";
-    }
-
-    if (
-      profile.phone.trim() &&
-      !/^(?:\+?88)?01[3-9]\d{8}$/.test(profile.phone.trim())
-    ) {
-      nextErrors.phone =
-        "Enter a valid Bangladesh mobile number.";
-    }
-
-    if (profile.bio.trim().length > 500) {
-      nextErrors.bio =
-        "Bio cannot contain more than 500 characters.";
-    }
-
-    if (profile.imageUrl.trim()) {
-      try {
-        const url = new URL(profile.imageUrl.trim());
-
-        if (
-          url.protocol !== "https:" &&
-          url.protocol !== "http:"
-        ) {
-          nextErrors.imageUrl =
-            "Enter a valid HTTP or HTTPS image URL.";
-        }
-      } catch {
-        nextErrors.imageUrl =
-          "Enter a valid image URL.";
-      }
-    }
-
-    setErrors(nextErrors);
-
-    return Object.keys(nextErrors).length === 0;
   }
 
   function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!validateProfile()) return;
+    const nextErrors = validateProfile(profile);
+
+    setErrors(nextErrors);
+
+    const firstError = Object.values(nextErrors)[0];
+
+    if (firstError) {
+      toast.error({
+        title: "Please Check Your Information",
+        description: firstError,
+      });
+
+      return;
+    }
 
     const updatedProfile: Profile = {
       ...profile,
@@ -199,28 +247,38 @@ export default function UpdateProfilePage() {
       imageUrl: profile.imageUrl.trim(),
     };
 
-    setSavedProfile(updatedProfile);
     setProfile(updatedProfile);
+    setSavedProfile(updatedProfile);
+    setSavedPreviewImage(previewImage);
 
-    setNotice(
-      "Demo profile updated successfully. Changes are stored in this page only and will reset after refresh."
-    );
+    toast.success({
+      title: "Demo Profile Updated",
+      description:
+        "Changes are saved only in this page's temporary state. Refreshing will reset them.",
+    });
   }
 
   function resetProfile() {
     setProfile({ ...initialProfile });
     setSavedProfile({ ...initialProfile });
+
     setPreviewImage("");
+    setSavedPreviewImage("");
     setSelectedFileName("");
     setImageFailed(false);
     setErrors({});
-    setNotice("Demo profile restored.");
+
+    toast.info({
+      title: "Demo Profile Reset",
+      description:
+        "The original demo information has been restored.",
+    });
   }
 
   return (
     <main className="min-h-screen bg-[#fff9f0] px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-5xl space-y-7">
-        {/* Header */}
+        {/* Page header */}
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <Link
@@ -250,22 +308,21 @@ export default function UpdateProfilePage() {
           </div>
         </header>
 
-        {/* Demo notice */}
+        {/* Demo explanation */}
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
           <strong>Frontend Preview:</strong> The form is
-          interactive, but it does not update an authenticated
-          account or database. Uploaded images are previewed
-          locally and are not sent to ImgBB.
+          interactive, but it does not update an
+          authenticated account or database. Uploaded
+          images are previewed locally and are not sent
+          to ImgBB.
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-          {/* Profile preview */}
+          {/* Profile card */}
           <aside className="self-start rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
             <div className="flex flex-col items-center text-center">
               <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-4 border-[#e3f4e8] bg-[#14243a] text-white">
                 {hasImage ? (
-                  // A regular img is used to preview selected
-                  // local files and user-entered external URLs.
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={displayedImage}
@@ -301,7 +358,8 @@ export default function UpdateProfilePage() {
               </div>
 
               <p className="mt-5 text-xs leading-6 text-slate-500">
-                {profile.bio || "Your profile bio will appear here."}
+                {profile.bio ||
+                  "Your profile bio will appear here."}
               </p>
             </div>
 
@@ -310,8 +368,14 @@ export default function UpdateProfilePage() {
                 Last saved demo name
               </p>
 
-              <p className="mt-2 text-sm font-semibold text-[#14243a]">
+              <p className="mt-2 break-words text-sm font-semibold text-[#14243a]">
                 {savedProfile.name}
+              </p>
+
+              <p className="mt-2 text-xs text-slate-400">
+                {savedPreviewImage
+                  ? "A local demo photo was selected."
+                  : "No local demo photo saved."}
               </p>
             </div>
           </aside>
@@ -328,21 +392,12 @@ export default function UpdateProfilePage() {
               </p>
             </div>
 
-            {notice && (
-              <div
-                role="status"
-                className="mb-5 flex items-start gap-3 rounded-xl bg-[#e3f4e8] p-4 text-sm font-medium text-emerald-900"
-              >
-                <CheckCircle2
-                  size={18}
-                  className="shrink-0"
-                />
-                {notice}
-              </div>
-            )}
-
-            <form onSubmit={saveProfile} className="space-y-5">
-              {/* Name */}
+            <form
+              onSubmit={saveProfile}
+              noValidate
+              className="space-y-5"
+            >
+              {/* Full name */}
               <div>
                 <label
                   htmlFor="profile-name"
@@ -354,18 +409,26 @@ export default function UpdateProfilePage() {
                 <input
                   id="profile-name"
                   type="text"
+                  autoComplete="name"
                   value={profile.name}
                   onChange={(event) =>
                     updateField("name", event.target.value)
                   }
+                  aria-invalid={Boolean(errors.name)}
+                  aria-describedby={
+                    errors.name ? "name-error" : undefined
+                  }
                   className={fieldStyle}
                   placeholder="Enter your full name"
-                  minLength={3}
                   required
                 />
 
                 {errors.name && (
-                  <p role="alert" className="mt-2 text-xs text-red-600">
+                  <p
+                    id="name-error"
+                    role="alert"
+                    className="mt-2 text-xs text-red-600"
+                  >
                     {errors.name}
                   </p>
                 )}
@@ -384,8 +447,8 @@ export default function UpdateProfilePage() {
                   id="profile-email"
                   type="email"
                   value={profile.email}
-                  className={`${fieldStyle} cursor-not-allowed bg-slate-50 text-slate-500`}
                   disabled
+                  className={`${fieldStyle} cursor-not-allowed bg-slate-50 text-slate-500`}
                 />
 
                 <p className="mt-2 text-xs text-slate-500">
@@ -405,16 +468,25 @@ export default function UpdateProfilePage() {
                 <input
                   id="profile-phone"
                   type="tel"
+                  autoComplete="tel"
                   value={profile.phone}
                   onChange={(event) =>
                     updateField("phone", event.target.value)
+                  }
+                  aria-invalid={Boolean(errors.phone)}
+                  aria-describedby={
+                    errors.phone ? "phone-error" : undefined
                   }
                   className={fieldStyle}
                   placeholder="01XXXXXXXXX"
                 />
 
                 {errors.phone && (
-                  <p role="alert" className="mt-2 text-xs text-red-600">
+                  <p
+                    id="phone-error"
+                    role="alert"
+                    className="mt-2 text-xs text-red-600"
+                  >
                     {errors.phone}
                   </p>
                 )}
@@ -448,13 +520,16 @@ export default function UpdateProfilePage() {
                 />
 
                 {errors.bio && (
-                  <p role="alert" className="mt-2 text-xs text-red-600">
+                  <p
+                    role="alert"
+                    className="mt-2 text-xs text-red-600"
+                  >
                     {errors.bio}
                   </p>
                 )}
               </div>
 
-              {/* Image selection */}
+              {/* Photo upload */}
               <div>
                 <label
                   htmlFor="profile-image"
@@ -475,7 +550,7 @@ export default function UpdateProfilePage() {
                       </p>
 
                       <p className="mt-1 text-xs text-slate-500">
-                        JPG, PNG or WebP · Maximum 2 MB
+                        JPG, PNG or WebP - Maximum 2 MB
                       </p>
                     </div>
                   </div>
@@ -495,7 +570,10 @@ export default function UpdateProfilePage() {
                   )}
 
                   {errors.image && (
-                    <p role="alert" className="mt-2 text-xs text-red-600">
+                    <p
+                      role="alert"
+                      className="mt-2 text-xs text-red-600"
+                    >
                       {errors.image}
                     </p>
                   )}
@@ -513,19 +591,33 @@ export default function UpdateProfilePage() {
 
                 <input
                   id="profile-image-url"
-                  type="url"
+                  type="text"
+                  inputMode="url"
                   value={profile.imageUrl}
                   onChange={(event) => {
                     setPreviewImage("");
                     setSelectedFileName("");
-                    updateField("imageUrl", event.target.value);
+                    updateField(
+                      "imageUrl",
+                      event.target.value
+                    );
                   }}
+                  aria-invalid={Boolean(errors.imageUrl)}
+                  aria-describedby={
+                    errors.imageUrl
+                      ? "image-url-error"
+                      : undefined
+                  }
                   className={fieldStyle}
                   placeholder="https://example.com/profile.jpg"
                 />
 
                 {errors.imageUrl && (
-                  <p role="alert" className="mt-2 text-xs text-red-600">
+                  <p
+                    id="image-url-error"
+                    role="alert"
+                    className="mt-2 text-xs text-red-600"
+                  >
                     {errors.imageUrl}
                   </p>
                 )}
@@ -566,12 +658,12 @@ export default function UpdateProfilePage() {
                 </div>
               </div>
 
-              {/* Actions */}
+              {/* Buttons */}
               <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-5">
                 <button
                   type="button"
                   onClick={resetProfile}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
                 >
                   <RotateCcw size={17} />
                   Reset Demo
@@ -579,7 +671,7 @@ export default function UpdateProfilePage() {
 
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white hover:bg-[#d96c45]"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#d96c45]"
                 >
                   <Save size={17} />
                   Save Demo Profile
