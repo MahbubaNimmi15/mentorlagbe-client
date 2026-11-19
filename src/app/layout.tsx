@@ -1,28 +1,31 @@
 
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
+
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "MentorLagbe | Learn Beyond Limits",
+    default: "MentorLagbe | Find Your Perfect Mentor",
     template: "%s | MentorLagbe",
   },
   description:
-    "Discover personalized tuition and mentorship opportunities with MentorLagbe.",
+    "MentorLagbe connects students with tutors and helps learners find the right tuition opportunities.",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
   return (
     <html lang="en">
-      <body className="min-h-screen">
+      <body className="min-h-screen bg-[#fff9f0] text-[#14243a] antialiased">
         <SiteHeader />
-        <main>{children}</main>
+        {children}
         <SiteFooter />
       </body>
     </html>
