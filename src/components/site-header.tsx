@@ -7,7 +7,6 @@ import { useState } from "react";
 import {
   ArrowUpRight,
   GraduationCap,
-  LayoutDashboard,
   Menu,
   X,
 } from "lucide-react";
@@ -17,6 +16,7 @@ const navigation = [
   { label: "Find a Mentor", href: "/tuitions" },
   { label: "Pricing", href: "/pricing" },
   { label: "Dashboard", href: "/dashboard" },
+  { label: "My Profile", href: "/dashboard/profile" },
   { label: "How It Works", href: "/#how-it-works" },
 ];
 
@@ -30,6 +30,7 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-[#ecede9] bg-white/95 backdrop-blur-xl">
       <div className="site-container flex h-20 items-center justify-between gap-4">
+        {/* Logo */}
         <Link
           href="/"
           onClick={closeMenu}
@@ -39,7 +40,7 @@ export function SiteHeader() {
             <GraduationCap size={23} />
           </span>
 
-          <span className="text-[21px] font-extrabold tracking-[-1px]">
+          <span className="text-[21px] font-extrabold tracking-[-1px] text-[#14243a]">
             Mentor
             <span className="text-[#e97c53]">
               Lagbe
@@ -47,25 +48,31 @@ export function SiteHeader() {
           </span>
         </Link>
 
+        {/* Desktop Navigation */}
         <nav
-          className="hidden flex-1 items-center justify-center gap-5 lg:flex"
+          className="hidden flex-1 items-center justify-center gap-4 lg:flex xl:gap-5"
           aria-label="Main navigation"
         >
           {navigation.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="whitespace-nowrap text-[13px] font-semibold text-[#485669] transition hover:text-[#e97c53]"
+              className={`whitespace-nowrap text-[12px] font-semibold transition hover:text-[#e97c53] xl:text-[13px] ${
+                item.href === "/dashboard/profile"
+                  ? "text-[#e97c53]"
+                  : "text-[#485669]"
+              }`}
             >
               {item.label}
             </Link>
           ))}
         </nav>
 
+        {/* Desktop Auth Buttons */}
         <div className="hidden shrink-0 items-center gap-2 lg:flex">
           <Link
             href="/sign-in"
-            className="whitespace-nowrap rounded-xl px-3 py-3 text-sm font-bold hover:bg-[#f7f8f5]"
+            className="whitespace-nowrap rounded-xl px-3 py-3 text-sm font-bold text-[#14243a] hover:bg-[#f7f8f5]"
           >
             Sign In
           </Link>
@@ -79,12 +86,14 @@ export function SiteHeader() {
           </Link>
         </div>
 
+        {/* Mobile Menu Toggle */}
         <button
           type="button"
-          onClick={() => setMenuOpen(!menuOpen)}
-          aria-label="Toggle navigation"
+          onClick={() => setMenuOpen((current) => !current)}
+          aria-label={menuOpen ? "Close navigation" : "Open navigation"}
           aria-expanded={menuOpen}
-          className="rounded-xl border border-[#e5e9e7] p-2.5 lg:hidden"
+          aria-controls="mobile-site-navigation"
+          className="rounded-xl border border-[#e5e9e7] p-2.5 text-[#14243a] lg:hidden"
         >
           {menuOpen ? (
             <X size={22} />
@@ -94,14 +103,23 @@ export function SiteHeader() {
         </button>
       </div>
 
+      {/* Mobile Navigation */}
       {menuOpen && (
-        <nav className="border-t border-[#ecede9] bg-white p-4 lg:hidden">
+        <nav
+          id="mobile-site-navigation"
+          className="border-t border-[#ecede9] bg-white p-4 lg:hidden"
+          aria-label="Mobile navigation"
+        >
           {navigation.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               onClick={closeMenu}
-              className="block rounded-xl px-4 py-3 text-sm font-semibold hover:bg-[#fff9f0]"
+              className={`block rounded-xl px-4 py-3 text-sm font-semibold hover:bg-[#fff9f0] ${
+                item.href === "/dashboard/profile"
+                  ? "text-[#e97c53]"
+                  : "text-[#14243a]"
+              }`}
             >
               {item.label}
             </Link>
@@ -112,7 +130,7 @@ export function SiteHeader() {
           <Link
             href="/sign-in"
             onClick={closeMenu}
-            className="block rounded-xl px-4 py-3 text-sm font-semibold"
+            className="block rounded-xl px-4 py-3 text-sm font-semibold text-[#14243a]"
           >
             Sign In
           </Link>
