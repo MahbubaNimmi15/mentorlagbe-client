@@ -28,69 +28,73 @@ type Activity = {
   date: string;
 };
 
-const demoStats = [
+const stats = [
   {
-    label: "Total Users",
+    title: "Total Users",
     value: "128",
-    detail: "Sample registered accounts",
+    description: "Sample user accounts",
     icon: Users,
-    tone: "bg-blue-50 text-blue-700",
+    color: "bg-blue-50 text-blue-700",
   },
   {
-    label: "Total Tutors",
+    title: "Total Tutors",
     value: "46",
-    detail: "Sample tutor profiles",
+    description: "Sample tutor profiles",
     icon: GraduationCap,
-    tone: "bg-violet-50 text-violet-700",
+    color: "bg-violet-50 text-violet-700",
   },
   {
-    label: "Pending Tuitions",
+    title: "Pending Tuitions",
     value: "12",
-    detail: "Awaiting admin approval",
+    description: "Sample pending listings",
     icon: Clock3,
-    tone: "bg-amber-50 text-amber-700",
+    color: "bg-amber-50 text-amber-700",
   },
   {
-    label: "Total Stripe Revenue",
+    title: "Stripe Revenue",
     value: "$385",
-    detail: "Sample payment amount",
+    description: "Sample revenue only",
     icon: CreditCard,
-    tone: "bg-emerald-50 text-emerald-700",
+    color: "bg-emerald-50 text-emerald-700",
   },
 ];
 
-const adminTools = [
+const adminPages = [
   {
-    title: "Manage Users",
+    title: "User Management",
     description:
-      "Review user accounts and manage Student, Tutor and Admin roles.",
-    icon: Users,
+      "View user profiles, search accounts, filter roles and preview role changes.",
     href: "/dashboard/admin/users",
-    note: "Next feature",
+    icon: Users,
+    button: "Manage Users",
+    tag: "Demo UI",
   },
   {
     title: "Tuition Approval",
     description:
-      "Review tuition submissions and approve or reject listings.",
-    icon: BookOpen,
+      "Review tutor submissions, inspect tuition details and approve or reject demo listings.",
     href: "/dashboard/admin/tuitions",
-    note: "Coming soon",
+    icon: BookOpen,
+    button: "Review Tuitions",
+    tag: "Demo UI",
   },
   {
     title: "Transactions",
     description:
-      "View subscription records, payment status and Stripe revenue.",
-    icon: CreditCard,
+      "Explore sample subscription payments, transaction details and revenue statistics.",
     href: "/dashboard/admin/transactions",
-    note: "Coming soon",
+    icon: CreditCard,
+    button: "View Transactions",
+    tag: "Demo UI",
   },
 ];
 
-const demoActivities: Activity[] = [
+const activities: Activity[] = [
   {
     id: "ACT-101",
     title: "New Tutor Registration",
-    description: "Ayesha Rahman created a sample tutor account.",
+    description:
+      "Ayesha Rahman created a sample tutor account.",
     type: "user",
     status: "Completed",
     date: "18 Nov 2026",
@@ -98,7 +102,8 @@ const demoActivities: Activity[] = [
   {
     id: "ACT-102",
     title: "Mathematics Tuition Submitted",
-    description: "A sample tuition post is awaiting review.",
+    description:
+      "A sample mathematics listing is awaiting approval.",
     type: "tuition",
     status: "Pending",
     date: "17 Nov 2026",
@@ -106,7 +111,8 @@ const demoActivities: Activity[] = [
   {
     id: "ACT-103",
     title: "English Tuition Approved",
-    description: "A sample tuition listing was approved.",
+    description:
+      "A sample tuition was approved for public listing.",
     type: "tuition",
     status: "Approved",
     date: "16 Nov 2026",
@@ -114,14 +120,15 @@ const demoActivities: Activity[] = [
   {
     id: "ACT-104",
     title: "Tutor Pro Subscription",
-    description: "A sample Stripe transaction was recorded.",
+    description:
+      "A fictional subscription payment was recorded.",
     type: "payment",
     status: "Completed",
     date: "15 Nov 2026",
   },
 ];
 
-const statusColors: Record<ActivityStatus, string> = {
+const activityColors: Record<ActivityStatus, string> = {
   Pending: "bg-amber-100 text-amber-800",
   Approved: "bg-emerald-100 text-emerald-800",
   Completed: "bg-blue-100 text-blue-800",
@@ -129,27 +136,26 @@ const statusColors: Record<ActivityStatus, string> = {
 
 export default function AdminDashboardPage() {
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [filter, setFilter] = useState("all");
 
-  const filteredActivities = useMemo(() => {
-    const query = search.toLowerCase().trim();
+  const visibleActivities = useMemo(() => {
+    const query = search.trim().toLowerCase();
 
-    return demoActivities.filter((activity) => {
-      const matchesQuery = [
+    return activities.filter((activity) => {
+      const searchable = [
+        activity.id,
         activity.title,
         activity.description,
-        activity.id,
       ]
         .join(" ")
-        .toLowerCase()
-        .includes(query);
+        .toLowerCase();
 
-      const matchesType =
-        typeFilter === "all" || activity.type === typeFilter;
-
-      return matchesQuery && matchesType;
+      return (
+        searchable.includes(query) &&
+        (filter === "all" || activity.type === filter)
+      );
     });
-  }, [search, typeFilter]);
+  }, [search, filter]);
 
   return (
     <main className="min-h-screen bg-[#fff9f0] px-4 py-8 sm:px-6 lg:px-8">
@@ -159,99 +165,133 @@ export default function AdminDashboardPage() {
           aria-label="Breadcrumb"
           className="flex flex-wrap items-center gap-2 text-sm text-slate-500"
         >
-          <Link href="/" className="hover:text-[#e97c53]">
+          <Link
+            href="/"
+            className="hover:text-[#e97c53]"
+          >
             MentorLagbe
           </Link>
+
           <span>/</span>
+
           <Link
             href="/dashboard"
             className="hover:text-[#e97c53]"
           >
             Dashboard
           </Link>
+
           <span>/</span>
+
           <span className="font-bold text-[#14243a]">
             Admin
           </span>
         </nav>
 
-        {/* Welcome */}
+        {/* Hero */}
         <section className="relative overflow-hidden rounded-3xl bg-[#14243a] p-6 text-white sm:p-9">
-          <div className="relative z-10 max-w-2xl">
-            <div className="mb-5 flex flex-wrap gap-2">
-              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-white">
+          <div className="relative z-10">
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-widest">
                 Admin Workspace
               </span>
 
-              <span className="rounded-full bg-[#e97c53]/20 px-3 py-1 text-xs font-semibold text-orange-200">
+              <span className="rounded-full bg-orange-400/20 px-3 py-1 text-xs font-semibold text-orange-200">
                 Preview Mode
               </span>
             </div>
 
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e97c53]">
-              <ShieldCheck size={29} />
+            <div className="mt-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e97c53]">
+              <ShieldCheck size={28} />
             </div>
 
-            <h1 className="text-3xl font-extrabold sm:text-4xl">
+            <h1 className="mt-5 text-3xl font-extrabold sm:text-4xl">
               Platform Control Center
             </h1>
 
-            <p className="mt-4 text-sm leading-7 text-slate-200">
-              Manage MentorLagbe users, tuition approvals and
-              subscription transactions from one organized dashboard.
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-200">
+              Manage the MentorLagbe platform from one
+              workspace. Explore user management, tuition
+              moderation and subscription transactions.
             </p>
+
+            {/* Quick navigation */}
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link
+                href="/dashboard/admin/users"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white hover:bg-[#d96c45]"
+              >
+                <Users size={18} />
+                Manage Users
+              </Link>
+
+              <Link
+                href="/dashboard/admin/tuitions"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-5 py-3 text-sm font-bold text-white hover:bg-white/20"
+              >
+                <BookOpen size={18} />
+                Tuition Approval
+              </Link>
+
+              <Link
+                href="/dashboard/admin/transactions"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-5 py-3 text-sm font-bold text-white hover:bg-white/20"
+              >
+                <CreditCard size={18} />
+                Transactions
+              </Link>
+            </div>
           </div>
 
-          <div className="pointer-events-none absolute -right-14 -top-14 h-64 w-64 rounded-full border-[38px] border-white/5" />
-          <div className="pointer-events-none absolute bottom-0 right-24 h-28 w-28 rounded-full bg-[#e97c53]/10 blur-xl" />
+          <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full border-[40px] border-white/5" />
         </section>
 
-        {/* Explicit demo notice */}
+        {/* Demo notice */}
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-          <strong>Demo Mode:</strong> All statistics and activities
-          shown below are sample data. Authentication, MongoDB
-          collections, protected Admin APIs and Stripe reporting
-          are not connected yet. This page must not be treated
-          as a live administration system.
+          <strong>Demo Mode:</strong> All statistics,
+          activities, users, tuitions and transactions
+          are sample data. MongoDB, Better Auth and
+          protected Admin APIs are not connected.
+          No administrative changes affect real accounts.
         </div>
 
-        {/* Stats */}
+        {/* Statistics */}
         <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          {demoStats.map((stat) => {
+          {stats.map((stat) => {
             const Icon = stat.icon;
 
             return (
               <article
-                key={stat.label}
+                key={stat.title}
                 className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"
               >
                 <div
-                  className={`mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl ${stat.tone}`}
+                  className={`mb-4 flex h-12 w-12 items-center justify-center rounded-xl ${stat.color}`}
                 >
                   <Icon size={23} />
                 </div>
 
-                <p className="text-xs font-bold text-slate-500 sm:text-sm">
-                  {stat.label}
+                <p className="text-sm font-semibold text-slate-500">
+                  {stat.title}
                 </p>
 
-                <p className="mt-2 text-3xl font-extrabold tracking-tight text-[#14243a]">
+                <p className="mt-3 text-3xl font-extrabold text-[#14243a]">
                   {stat.value}
                 </p>
 
-                <p className="mt-2 text-xs leading-5 text-slate-500">
-                  {stat.detail}
+                <p className="mt-2 text-xs text-slate-500">
+                  {stat.description}
                 </p>
               </article>
             );
           })}
         </section>
 
-        {/* Section title */}
+        {/* Admin modules */}
         <section>
           <div className="mb-5 flex items-center gap-3">
             <div className="rounded-xl bg-[#e3f4e8] p-3 text-emerald-700">
-              <LayoutDashboard size={21} />
+              <LayoutDashboard size={22} />
             </div>
 
             <div>
@@ -259,66 +299,71 @@ export default function AdminDashboardPage() {
                 Administration Tools
               </h2>
 
-              <p className="text-sm text-slate-500">
-                Modules planned for the Admin dashboard
+              <p className="mt-1 text-sm text-slate-500">
+                Select a module to open its management page.
               </p>
             </div>
           </div>
 
           <div className="grid gap-5 md:grid-cols-3">
-            {adminTools.map((tool) => {
-              const Icon = tool.icon;
+            {adminPages.map((page) => {
+              const Icon = page.icon;
 
               return (
                 <article
-                  key={tool.title}
-                  className="flex flex-col rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition hover:border-orange-200"
+                  key={page.href}
+                  className="flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition hover:border-orange-200 hover:shadow-md"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#fff0e7] text-[#e97c53]">
                       <Icon size={23} />
                     </div>
 
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                      {tool.note}
+                    <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-700">
+                      {page.tag}
                     </span>
                   </div>
 
                   <h3 className="mt-5 text-lg font-extrabold text-[#14243a]">
-                    {tool.title}
+                    {page.title}
                   </h3>
 
                   <p className="mt-3 flex-1 text-sm leading-6 text-slate-500">
-                    {tool.description}
+                    {page.description}
                   </p>
 
-                  <div className="mt-5 flex items-center gap-2 text-sm font-bold text-slate-400">
-                    Not available yet
-                    <ArrowRight size={16} />
-                  </div>
+                  <Link
+                    href={page.href}
+                    className="mt-6 inline-flex items-center gap-2 self-start rounded-xl bg-[#14243a] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#233953]"
+                  >
+                    {page.button}
+                    <ArrowRight size={17} />
+                  </Link>
                 </article>
               );
             })}
           </div>
         </section>
 
-        {/* Recent activity */}
+        {/* Recent Activity */}
         <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-extrabold text-[#14243a]">
                 Recent Activity
               </h2>
+
               <p className="mt-1 text-sm text-slate-500">
-                Sample events for Admin UI testing
+                Sample activities for preview testing
               </p>
             </div>
 
             <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-700">
-              Sample Data
+              Demo Data
             </span>
           </div>
 
+          {/* Filters */}
           <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_190px]">
             <div className="relative">
               <Search
@@ -326,32 +371,32 @@ export default function AdminDashboardPage() {
                 className="pointer-events-none absolute left-4 top-3.5 text-slate-400"
               />
 
-              <label htmlFor="activity-search" className="sr-only">
+              <label htmlFor="admin-search" className="sr-only">
                 Search activity
               </label>
 
               <input
-                id="activity-search"
+                id="admin-search"
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search recent activity..."
+                placeholder="Search activities..."
                 className="w-full rounded-xl border border-slate-200 py-3 pl-11 pr-4 text-sm text-slate-800 outline-none focus:border-[#e97c53]"
               />
             </div>
 
             <div>
-              <label htmlFor="activity-type" className="sr-only">
-                Filter activity type
+              <label htmlFor="admin-filter" className="sr-only">
+                Filter activity
               </label>
 
               <select
-                id="activity-type"
-                value={typeFilter}
-                onChange={(event) => setTypeFilter(event.target.value)}
+                id="admin-filter"
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#e97c53]"
               >
-                <option value="all">All Activity</option>
+                <option value="all">All Activities</option>
                 <option value="user">Users</option>
                 <option value="tuition">Tuitions</option>
                 <option value="payment">Payments</option>
@@ -359,18 +404,20 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
+          {/* Activity list */}
           <div className="mt-6 space-y-3">
-            {filteredActivities.length === 0 ? (
+            {visibleActivities.length === 0 ? (
               <div className="rounded-2xl bg-slate-50 p-10 text-center">
-                <p className="font-bold text-[#14243a]">
+                <h3 className="font-bold text-[#14243a]">
                   No matching activities
-                </p>
+                </h3>
+
                 <p className="mt-2 text-sm text-slate-500">
                   Try another search or filter.
                 </p>
               </div>
             ) : (
-              filteredActivities.map((activity) => (
+              visibleActivities.map((activity) => (
                 <article
                   key={activity.id}
                   className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-100 p-4 sm:p-5"
@@ -390,11 +437,12 @@ export default function AdminDashboardPage() {
                   </div>
 
                   <span
-                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${statusColors[activity.status]}`}
+                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${activityColors[activity.status]}`}
                   >
                     {activity.status === "Approved" && (
                       <CheckCircle2 size={13} />
                     )}
+
                     {activity.status}
                   </span>
                 </article>
@@ -403,17 +451,17 @@ export default function AdminDashboardPage() {
           </div>
         </section>
 
-        {/* Roadmap note */}
-        <section className="rounded-2xl border border-[#e3f4e8] bg-[#e3f4e8] p-5">
-          <p className="text-sm font-bold text-[#14243a]">
-            Next implementation: Admin User Management
-          </p>
+        {/* Integration status */}
+        <section className="rounded-2xl bg-[#e3f4e8] p-5">
+          <h2 className="text-sm font-extrabold text-[#14243a]">
+            Next Phase: Real Backend Integration
+          </h2>
 
           <p className="mt-2 text-sm leading-6 text-slate-700">
-            We will add a user list, search, role filters and
-            role-change confirmations. Real account permissions
-            will only be enabled after secure authentication and
-            backend authorization are implemented.
+            The Admin navigation is ready for UI testing.
+            The next major task is MongoDB Atlas connection,
+            followed by Better Auth, JWT verification and
+            secure role-based APIs.
           </p>
         </section>
       </div>
