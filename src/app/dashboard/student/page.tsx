@@ -42,24 +42,24 @@ export default function StudentDashboardPage() {
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Total Applications"
-          value="—"
-          description="Live application data not connected"
+          value="0"
+          description="Demo count — live data pending"
           icon={<BookOpen size={23} />}
           accent="blue"
         />
 
         <StatCard
           title="Accepted"
-          value="—"
-          description="Live application data not connected"
+          value="0"
+          description="Demo count — live data pending"
           icon={<CheckCircle2 size={23} />}
           accent="green"
         />
 
         <StatCard
           title="Pending"
-          value="—"
-          description="Live application data not connected"
+          value="0"
+          description="Demo count — live data pending"
           icon={<Clock3 size={23} />}
           accent="orange"
         />
@@ -67,7 +67,7 @@ export default function StudentDashboardPage() {
         <StatCard
           title="Current Plan"
           value="—"
-          description="Plan will load after authentication"
+          description="Subscription data not connected"
           icon={<GraduationCap size={23} />}
           accent="purple"
         />

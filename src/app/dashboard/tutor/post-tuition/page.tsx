@@ -2,8 +2,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
+
 import {
   ArrowLeft,
   ArrowRight,
@@ -34,9 +36,9 @@ type FormErrors = Partial<
   Record<keyof TuitionForm | "banner", string>
 >;
 
-type SubmittedPreview = TuitionForm & {
-  bannerName: string | null;
-};
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5001";
 
 const subjects = [
   "Mathematics",
@@ -81,23 +83,34 @@ const inputClass =
 const labelClass =
   "mb-2 block text-sm font-semibold text-slate-800";
 
-function FieldError({ message }: { message?: string }) {
+function FieldError({
+  message,
+}: {
+  message?: string;
+}) {
   if (!message) return null;
 
   return (
-    <p role="alert" className="mt-1.5 text-xs font-medium text-red-600">
+    <p
+      role="alert"
+      className="mt-1.5 text-xs font-medium text-red-600"
+    >
       {message}
     </p>
   );
 }
 
-function validateForm(form: TuitionForm): FormErrors {
+function validateForm(
+  form: TuitionForm
+): FormErrors {
   const errors: FormErrors = {};
 
-  if (!form.title.trim()) {
-    errors.title = "Tuition title is required.";
-  } else if (form.title.trim().length < 8) {
-    errors.title = "Enter at least 8 characters.";
+  const title = form.title.trim();
+  const location = form.location.trim();
+  const description = form.description.trim();
+
+  if (title.length < 8 || title.length > 150) {
+    errors.title = "Title must contain 8 to 150 characters.";
   }
 
   if (!form.subject) {
@@ -108,58 +121,81 @@ function validateForm(form: TuitionForm): FormErrors {
     errors.classLevel = "Please select a class level.";
   }
 
-  if (form.mode === "Offline" && !form.location.trim()) {
+  if (
+    form.mode === "Offline" &&
+    location.length < 2
+  ) {
     errors.location =
       "Location is required for offline tuition.";
+  }
+
+  if (location.length > 200) {
+    errors.location =
+      "Location cannot exceed 200 characters.";
   }
 
   const fee = Number(form.monthlyFee);
 
   if (!form.monthlyFee.trim()) {
     errors.monthlyFee = "Monthly fee is required.";
-  } else if (!Number.isFinite(fee) || fee <= 0) {
+  } else if (
+    !Number.isInteger(fee) ||
+    fee <= 0 ||
+    fee > 1000000
+  ) {
     errors.monthlyFee =
-      "Monthly fee must be greater than zero.";
-  } else if (!Number.isInteger(fee)) {
-    errors.monthlyFee =
-      "Enter the fee as a whole number.";
+      "Enter a whole number between 1 and 1000000.";
   }
 
   const days = Number(form.daysPerWeek);
 
-  if (!form.daysPerWeek) {
+  if (
+    !form.daysPerWeek ||
+    !Number.isInteger(days) ||
+    days < 1 ||
+    days > 7
+  ) {
     errors.daysPerWeek =
-      "Please select the number of days.";
-  } else if (!Number.isInteger(days) || days < 1 || days > 7) {
-    errors.daysPerWeek =
-      "Choose between 1 and 7 days.";
+      "Please choose between 1 and 7 days.";
   }
 
-  if (!form.description.trim()) {
-    errors.description = "Description is required.";
-  } else if (form.description.trim().length < 30) {
+  if (
+    description.length < 30 ||
+    description.length > 1900
+  ) {
     errors.description =
-      "Description must contain at least 30 characters.";
+      "Description must contain 30 to 1900 characters.";
   }
 
   return errors;
 }
 
 export default function PostTuitionPage() {
+  const router = useRouter();
   const toast = useToast();
 
-  const [form, setForm] = useState<TuitionForm>({
-    ...initialForm,
-  });
+  const [form, setForm] =
+    useState<TuitionForm>({ ...initialForm });
 
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [banner, setBanner] = useState<File | null>(null);
-  const [bannerPreview, setBannerPreview] = useState("");
-  const [submitted, setSubmitted] =
-    useState<SubmittedPreview | null>(null);
+  const [errors, setErrors] =
+    useState<FormErrors>({});
+
+  const [banner, setBanner] =
+    useState<File | null>(null);
+
+  const [bannerPreview, setBannerPreview] =
+    useState("");
+
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const [serverError, setServerError] =
+    useState("");
 
   useEffect(() => {
-    if (!banner) return;
+    if (!banner) {
+      return;
+    }
 
     const objectUrl = URL.createObjectURL(banner);
     setBannerPreview(objectUrl);
@@ -183,13 +219,14 @@ export default function PostTuitionPage() {
       [field]: undefined,
     }));
 
-    setSubmitted(null);
+    setServerError("");
   }
 
   function handleImageChange(
     event: ChangeEvent<HTMLInputElement>
   ) {
     const file = event.target.files?.[0];
+
     if (!file) return;
 
     const allowedTypes = [
@@ -199,43 +236,24 @@ export default function PostTuitionPage() {
     ];
 
     if (!allowedTypes.includes(file.type)) {
-      const message =
-        "Please select a JPG, PNG or WebP image.";
-
       setErrors((previous) => ({
         ...previous,
-        banner: message,
+        banner: "Select a JPG, PNG or WebP image.",
       }));
-
-      toast.warning({
-        title: "Unsupported Banner Format",
-        description: message,
-      });
-
       event.target.value = "";
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      const message = "Image size must be 5 MB or less.";
-
       setErrors((previous) => ({
         ...previous,
-        banner: message,
+        banner: "Image must be 5 MB or less.",
       }));
-
-      toast.warning({
-        title: "Banner Is Too Large",
-        description: message,
-      });
-
       event.target.value = "";
       return;
     }
 
     setBanner(file);
-    setBannerPreview("");
-    setSubmitted(null);
 
     setErrors((previous) => ({
       ...previous,
@@ -245,7 +263,7 @@ export default function PostTuitionPage() {
     toast.info({
       title: "Banner Selected",
       description:
-        "Your image will be previewed locally. It has not been uploaded to ImgBB.",
+        "Image preview is local only. Upload is not connected yet.",
     });
 
     event.target.value = "";
@@ -254,22 +272,37 @@ export default function PostTuitionPage() {
   function removeBanner() {
     setBanner(null);
     setBannerPreview("");
-    setSubmitted(null);
+  }
+
+  function handleReset() {
+    if (submitting) return;
+
+    setForm({ ...initialForm });
+    setErrors({});
+    setBanner(null);
+    setBannerPreview("");
+    setServerError("");
 
     toast.info({
-      title: "Banner Removed",
-      description: "The selected demo banner was removed.",
+      title: "Form Reset",
+      description: "Form information has been cleared.",
     });
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
-    setSubmitted(null);
+
+    if (submitting) return;
+
+    setServerError("");
 
     const nextErrors = validateForm(form);
     setErrors(nextErrors);
 
-    const firstError = Object.values(nextErrors)[0];
+    const firstError =
+      Object.values(nextErrors)[0];
 
     if (firstError) {
       toast.error({
@@ -277,53 +310,149 @@ export default function PostTuitionPage() {
         description: firstError,
       });
 
-      const firstField = Object.keys(nextErrors)[0];
+      const firstField =
+        Object.keys(nextErrors)[0];
 
-      const fieldElement = document.getElementById(firstField);
+      const element =
+        document.getElementById(firstField);
 
-      if (fieldElement) {
-        fieldElement.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-        fieldElement.focus({ preventScroll: true });
-      }
+      element?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
 
+      element?.focus({ preventScroll: true });
       return;
     }
 
-    setSubmitted({
-      ...form,
-      title: form.title.trim(),
-      location: form.location.trim(),
-      description: form.description.trim(),
-      bannerName: banner?.name ?? null,
-    });
+    setSubmitting(true);
 
-    toast.success({
-      title: "Tuition Preview Is Ready",
-      description:
-        "All fields passed validation. This is only a demo preview; nothing has been published.",
-    });
-  }
+    try {
+      const saved = sessionStorage.getItem(
+        "mentorlagbe_auth"
+      );
 
-  function handleReset() {
-    setForm({ ...initialForm });
-    setErrors({});
-    setBanner(null);
-    setBannerPreview("");
-    setSubmitted(null);
+      if (!saved) {
+        throw new Error(
+          "Please sign in with your tutor account."
+        );
+      }
 
-    toast.info({
-      title: "Form Reset",
-      description:
-        "All demo tuition information has been cleared.",
-    });
+      let token = "";
+
+      try {
+        const session = JSON.parse(saved) as {
+          token?: string;
+        };
+
+        token = session.token || "";
+      } catch {
+        throw new Error(
+          "Invalid login session. Please sign in again."
+        );
+      }
+
+      if (!token) {
+        throw new Error(
+          "Authentication token missing. Please sign in again."
+        );
+      }
+
+      // Current backend accepts:
+      // title, subject, classLevel, location,
+      // salary and requirements.
+      //
+      // Preserve mode, days and description
+      // inside requirements until the database
+      // schema supports separate fields.
+
+      const requirements = [
+        `Tuition Mode: ${form.mode}`,
+        `Days Per Week: ${form.daysPerWeek}`,
+        "",
+        form.description.trim(),
+      ].join("\n");
+
+      const payload = {
+        title: form.title.trim(),
+        subject: form.subject,
+        classLevel: form.classLevel,
+        location:
+          form.location.trim() ||
+          "Online - Bangladesh",
+        salary: Number(form.monthlyFee),
+        requirements,
+      };
+
+      const response = await fetch(
+        `${API_URL}/api/tuitions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const result = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        tuition?: {
+          id: string;
+          status: string;
+        };
+      };
+
+      if (!response.ok || !result.success) {
+        if (response.status === 401) {
+          throw new Error(
+            "Your session expired. Please sign in again."
+          );
+        }
+
+        if (response.status === 403) {
+          throw new Error(
+            "Only tutor accounts can create tuition posts."
+          );
+        }
+
+        throw new Error(
+          result.message ||
+          "Unable to create tuition."
+        );
+      }
+
+      toast.success({
+        title: "Tuition Submitted",
+        description:
+          "Your tuition was saved to MongoDB and is pending admin approval.",
+      });
+
+      router.push("/dashboard/tutor/my-tuitions");
+      router.refresh();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to submit tuition.";
+
+      setServerError(message);
+
+      toast.error({
+        title: "Tuition Submission Failed",
+        description: message,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
     <main className="min-h-screen bg-[#fffaf6]">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        {/* Page Header */}
         <div className="mb-7">
           <Link
             href="/dashboard/tutor"
@@ -344,13 +473,13 @@ export default function PostTuitionPage() {
               </h1>
 
               <p className="mt-3 text-sm leading-6 text-slate-500">
-                Fill out the details below to prepare
-                your tuition listing preview.
+                Complete the form to submit your
+                tuition listing for admin approval.
               </p>
             </div>
 
             <span className="rounded-full bg-[#e3f4e8] px-4 py-2 text-xs font-bold text-emerald-800">
-              Frontend Preview
+              MongoDB Submission
             </span>
           </div>
         </div>
@@ -367,10 +496,12 @@ export default function PostTuitionPage() {
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fff0e7] font-bold text-[#e97c53]">
                   01
                 </span>
+
                 <div>
                   <h2 className="text-xl font-bold text-[#14243a]">
                     Tuition Information
                   </h2>
+
                   <p className="mt-1 text-sm text-slate-500">
                     Start with the core details of your listing.
                   </p>
@@ -379,51 +510,73 @@ export default function PostTuitionPage() {
 
               <div className="space-y-5">
                 <div>
-                  <label htmlFor="title" className={labelClass}>
-                    Tuition Title <span className="text-red-500">*</span>
+                  <label
+                    htmlFor="title"
+                    className={labelClass}
+                  >
+                    Tuition Title *
                   </label>
 
                   <input
                     id="title"
                     value={form.title}
                     onChange={(event) =>
-                      updateField("title", event.target.value)
+                      updateField(
+                        "title",
+                        event.target.value
+                      )
                     }
                     aria-invalid={Boolean(errors.title)}
-                    placeholder="e.g. Experienced Mathematics Tutor for Class 9"
+                    placeholder="Experienced Mathematics Tutor for Class 9"
                     className={inputClass}
                   />
+
                   <FieldError message={errors.title} />
                 </div>
 
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div>
-                    <label htmlFor="subject" className={labelClass}>
-                      Subject <span className="text-red-500">*</span>
+                    <label
+                      htmlFor="subject"
+                      className={labelClass}
+                    >
+                      Subject *
                     </label>
 
                     <select
                       id="subject"
                       value={form.subject}
                       onChange={(event) =>
-                        updateField("subject", event.target.value)
+                        updateField(
+                          "subject",
+                          event.target.value
+                        )
                       }
-                      aria-invalid={Boolean(errors.subject)}
                       className={inputClass}
                     >
-                      <option value="">Select subject</option>
+                      <option value="">
+                        Select subject
+                      </option>
+
                       {subjects.map((subject) => (
-                        <option key={subject} value={subject}>
+                        <option
+                          key={subject}
+                          value={subject}
+                        >
                           {subject}
                         </option>
                       ))}
                     </select>
+
                     <FieldError message={errors.subject} />
                   </div>
 
                   <div>
-                    <label htmlFor="classLevel" className={labelClass}>
-                      Class Level <span className="text-red-500">*</span>
+                    <label
+                      htmlFor="classLevel"
+                      className={labelClass}
+                    >
+                      Class Level *
                     </label>
 
                     <select
@@ -435,16 +588,22 @@ export default function PostTuitionPage() {
                           event.target.value
                         )
                       }
-                      aria-invalid={Boolean(errors.classLevel)}
                       className={inputClass}
                     >
-                      <option value="">Select class level</option>
+                      <option value="">
+                        Select class level
+                      </option>
+
                       {classLevels.map((level) => (
-                        <option key={level} value={level}>
+                        <option
+                          key={level}
+                          value={level}
+                        >
                           {level}
                         </option>
                       ))}
                     </select>
+
                     <FieldError message={errors.classLevel} />
                   </div>
                 </div>
@@ -457,10 +616,12 @@ export default function PostTuitionPage() {
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fff0e7] font-bold text-[#e97c53]">
                   02
                 </span>
+
                 <div>
                   <h2 className="text-xl font-bold text-[#14243a]">
                     Schedule & Location
                   </h2>
+
                   <p className="mt-1 text-sm text-slate-500">
                     Let students know where and when you teach.
                   </p>
@@ -470,7 +631,7 @@ export default function PostTuitionPage() {
               <div className="space-y-6">
                 <div>
                   <p className={labelClass}>
-                    Tuition Mode <span className="text-red-500">*</span>
+                    Tuition Mode *
                   </p>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -497,15 +658,14 @@ export default function PostTuitionPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="location" className={labelClass}>
+                  <label
+                    htmlFor="location"
+                    className={labelClass}
+                  >
                     Location{" "}
-                    {form.mode === "Offline" ? (
-                      <span className="text-red-500">*</span>
-                    ) : (
-                      <span className="font-normal text-slate-400">
-                        (Optional)
-                      </span>
-                    )}
+                    {form.mode === "Offline"
+                      ? "*"
+                      : "(Optional)"}
                   </label>
 
                   <input
@@ -517,32 +677,31 @@ export default function PostTuitionPage() {
                         event.target.value
                       )
                     }
-                    aria-invalid={Boolean(errors.location)}
                     placeholder={
                       form.mode === "Offline"
-                        ? "e.g. Dhanmondi, Dhaka"
-                        : "e.g. Available across Bangladesh"
+                        ? "Dhanmondi, Dhaka"
+                        : "Available across Bangladesh"
                     }
                     className={inputClass}
                   />
-                  <FieldError message={errors.location} />
 
-                  <p className="mt-2 text-xs text-slate-400">
-                    Offline tuition requires a location.
-                  </p>
+                  <FieldError message={errors.location} />
                 </div>
 
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div>
-                    <label htmlFor="monthlyFee" className={labelClass}>
-                      Monthly Fee (BDT){" "}
-                      <span className="text-red-500">*</span>
+                    <label
+                      htmlFor="monthlyFee"
+                      className={labelClass}
+                    >
+                      Monthly Fee (BDT) *
                     </label>
 
                     <input
                       id="monthlyFee"
                       type="number"
                       min="1"
+                      max="1000000"
                       step="1"
                       value={form.monthlyFee}
                       onChange={(event) =>
@@ -551,17 +710,19 @@ export default function PostTuitionPage() {
                           event.target.value
                         )
                       }
-                      aria-invalid={Boolean(errors.monthlyFee)}
-                      placeholder="e.g. 5000"
+                      placeholder="5000"
                       className={inputClass}
                     />
+
                     <FieldError message={errors.monthlyFee} />
                   </div>
 
                   <div>
-                    <label htmlFor="daysPerWeek" className={labelClass}>
-                      Days Per Week{" "}
-                      <span className="text-red-500">*</span>
+                    <label
+                      htmlFor="daysPerWeek"
+                      className={labelClass}
+                    >
+                      Days Per Week *
                     </label>
 
                     <select
@@ -573,19 +734,25 @@ export default function PostTuitionPage() {
                           event.target.value
                         )
                       }
-                      aria-invalid={Boolean(errors.daysPerWeek)}
                       className={inputClass}
                     >
-                      <option value="">Select days</option>
-                      {Array.from(
-                        { length: 7 },
-                        (_, index) => index + 1
-                      ).map((day) => (
-                        <option key={day} value={String(day)}>
-                          {day} {day === 1 ? "day" : "days"}
-                        </option>
-                      ))}
+                      <option value="">
+                        Select days
+                      </option>
+
+                      {[1, 2, 3, 4, 5, 6, 7].map(
+                        (day) => (
+                          <option
+                            key={day}
+                            value={String(day)}
+                          >
+                            {day}{" "}
+                            {day === 1 ? "day" : "days"}
+                          </option>
+                        )
+                      )}
                     </select>
+
                     <FieldError message={errors.daysPerWeek} />
                   </div>
                 </div>
@@ -598,10 +765,12 @@ export default function PostTuitionPage() {
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fff0e7] font-bold text-[#e97c53]">
                   03
                 </span>
+
                 <div>
                   <h2 className="text-xl font-bold text-[#14243a]">
                     Description & Banner
                   </h2>
+
                   <p className="mt-1 text-sm text-slate-500">
                     Give your listing a personal touch.
                   </p>
@@ -610,15 +779,17 @@ export default function PostTuitionPage() {
 
               <div className="space-y-6">
                 <div>
-                  <label htmlFor="description" className={labelClass}>
-                    Tuition Description{" "}
-                    <span className="text-red-500">*</span>
+                  <label
+                    htmlFor="description"
+                    className={labelClass}
+                  >
+                    Tuition Description *
                   </label>
 
                   <textarea
                     id="description"
                     rows={6}
-                    maxLength={2000}
+                    maxLength={1900}
                     value={form.description}
                     onChange={(event) =>
                       updateField(
@@ -626,65 +797,66 @@ export default function PostTuitionPage() {
                         event.target.value
                       )
                     }
-                    aria-invalid={Boolean(errors.description)}
-                    placeholder="Describe your teaching approach, experience, class schedule and what students can expect..."
+                    placeholder="Describe your teaching approach, experience and class schedule..."
                     className={`${inputClass} resize-y`}
                   />
 
-                  <div className="mt-1 flex justify-between gap-3">
-                    <FieldError message={errors.description} />
-                    <span className="ml-auto text-xs text-slate-400">
-                      {form.description.length}/2000
-                    </span>
-                  </div>
+                  <FieldError message={errors.description} />
+
+                  <p className="mt-1 text-right text-xs text-slate-400">
+                    {form.description.length}/1900
+                  </p>
                 </div>
 
                 <div>
-                  <label htmlFor="banner" className={labelClass}>
-                    Tuition Banner{" "}
-                    <span className="font-normal text-slate-400">
-                      (Optional)
-                    </span>
+                  <label
+                    htmlFor="banner"
+                    className={labelClass}
+                  >
+                    Tuition Banner (Optional)
                   </label>
 
                   {banner && bannerPreview ? (
                     <div className="overflow-hidden rounded-2xl border border-slate-200">
                       <div
                         role="img"
-                        aria-label="Selected tuition banner preview"
+                        aria-label="Selected banner preview"
                         className="h-56 w-full bg-slate-100 bg-contain bg-center bg-no-repeat"
                         style={{
-                          backgroundImage: `url("${bannerPreview}")`,
+                          backgroundImage:
+                            `url("${bannerPreview}")`,
                         }}
                       />
 
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-3">
-                        <p className="max-w-xs truncate text-xs text-slate-600">
+                      <div className="flex items-center justify-between gap-3 p-3">
+                        <p className="truncate text-xs text-slate-600">
                           {banner.name}
                         </p>
 
                         <button
                           type="button"
                           onClick={removeBanner}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:underline"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-red-600"
                         >
                           <Trash2 size={15} />
-                          Remove image
+                          Remove
                         </button>
                       </div>
                     </div>
                   ) : (
                     <label
                       htmlFor="banner"
-                      className="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-orange-200 bg-[#fffaf6] px-5 py-8 text-center transition hover:bg-orange-50"
+                      className="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-orange-200 bg-[#fffaf6] px-5 py-8 text-center"
                     >
                       <ImagePlus
                         size={32}
                         className="mb-3 text-[#e97c53]"
                       />
+
                       <span className="text-sm font-bold text-[#14243a]">
-                        Click to upload a banner
+                        Click to select a banner
                       </span>
+
                       <span className="mt-2 text-xs text-slate-500">
                         JPG, PNG or WebP - Max 5 MB
                       </span>
@@ -702,7 +874,7 @@ export default function PostTuitionPage() {
                   {banner && (
                     <label
                       htmlFor="banner"
-                      className="mt-3 inline-block cursor-pointer text-xs font-semibold text-[#e97c53] hover:underline"
+                      className="mt-3 inline-block cursor-pointer text-xs font-semibold text-[#e97c53]"
                     >
                       Choose another image
                     </label>
@@ -711,19 +883,29 @@ export default function PostTuitionPage() {
                   <FieldError message={errors.banner} />
 
                   <p className="mt-2 text-xs text-slate-400">
-                    Image preview is local only.
-                    ImgBB upload will be connected later.
+                    Banner is previewed locally only.
+                    It is not uploaded or saved to MongoDB.
                   </p>
                 </div>
               </div>
             </section>
 
-            {/* Form actions */}
+            {/* Actions */}
+            {serverError && (
+              <div
+                role="alert"
+                className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700"
+              >
+                {serverError}
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-orange-100 bg-white p-5">
               <button
                 type="button"
                 onClick={handleReset}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                disabled={submitting}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
               >
                 <RotateCcw size={17} />
                 Reset Form
@@ -731,73 +913,25 @@ export default function PostTuitionPage() {
 
               <button
                 type="submit"
-                className="inline-flex items-center gap-2 rounded-xl bg-[#e97c53] px-7 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#d96c45]"
+                disabled={submitting}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#e97c53] px-7 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#d96c45] disabled:opacity-50"
               >
-                Validate & Preview
+                {submitting
+                  ? "Submitting..."
+                  : "Submit Tuition"}
                 <ArrowRight size={17} />
               </button>
             </div>
-
-            {/* Submitted preview */}
-            {submitted && (
-              <section
-                role="status"
-                className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6"
-              >
-                <div className="flex items-center gap-2 text-emerald-700">
-                  <CheckCircle2 size={20} />
-                  <p className="text-xs font-bold uppercase tracking-widest">
-                    Validation Successful
-                  </p>
-                </div>
-
-                <h2 className="mt-3 text-xl font-bold text-[#14243a]">
-                  Your tuition preview is ready!
-                </h2>
-
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  All required fields passed validation.
-                  This listing has NOT been saved or published
-                  because the database is not connected.
-                </p>
-
-                <div className="mt-5 space-y-3 rounded-2xl bg-white p-4 text-sm text-slate-700">
-                  <p><strong>Title:</strong> {submitted.title}</p>
-                  <p><strong>Subject:</strong> {submitted.subject}</p>
-                  <p><strong>Class:</strong> {submitted.classLevel}</p>
-                  <p><strong>Mode:</strong> {submitted.mode}</p>
-                  <p>
-                    <strong>Location:</strong>{" "}
-                    {submitted.location || "Not specified"}
-                  </p>
-                  <p>
-                    <strong>Monthly Fee:</strong> BDT{" "}
-                    {Number(
-                      submitted.monthlyFee
-                    ).toLocaleString("en-BD")}
-                  </p>
-                  <p>
-                    <strong>Days/Week:</strong>{" "}
-                    {submitted.daysPerWeek}
-                  </p>
-                  <p>
-                    <strong>Banner:</strong>{" "}
-                    {submitted.bannerName || "No banner selected"}
-                  </p>
-                  <p className="break-words">
-                    <strong>Description:</strong>{" "}
-                    {submitted.description}
-                  </p>
-                </div>
-              </section>
-            )}
           </form>
 
-          {/* Right sidebar */}
+          {/* Sidebar */}
           <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
             <div className="overflow-hidden rounded-3xl bg-[#14243a] p-6 text-white">
               <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
-                <Sparkles size={25} className="text-[#ffb491]" />
+                <Sparkles
+                  size={25}
+                  className="text-[#ffb491]"
+                />
               </div>
 
               <h2 className="text-xl font-bold">
@@ -818,7 +952,10 @@ export default function PostTuitionPage() {
                   "Explain your teaching approach",
                   "Add a clear banner image",
                 ].map((tip) => (
-                  <p key={tip} className="flex items-start gap-2">
+                  <p
+                    key={tip}
+                    className="flex items-start gap-2"
+                  >
                     <CheckCircle2
                       size={17}
                       className="mt-0.5 shrink-0 text-[#ffb491]"
@@ -843,6 +980,7 @@ export default function PostTuitionPage() {
                   <p className="font-bold text-slate-800">
                     Free Tutor
                   </p>
+
                   <p className="mt-1 text-sm text-slate-500">
                     Up to 2 tuition listings
                   </p>
@@ -852,6 +990,7 @@ export default function PostTuitionPage() {
                   <p className="font-bold text-slate-800">
                     Tutor Pro
                   </p>
+
                   <p className="mt-1 text-sm text-slate-500">
                     Unlimited tuition listings
                   </p>
@@ -860,15 +999,14 @@ export default function PostTuitionPage() {
 
               <Link
                 href="/pricing"
-                className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#e97c53] hover:underline"
+                className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#e97c53]"
               >
                 View Plans
                 <ArrowRight size={16} />
               </Link>
 
               <p className="mt-4 text-xs leading-5 text-slate-400">
-                Plan limits will be enforced by the backend
-                after authentication and database integration.
+                Plan limits are not enforced by the backend yet.
               </p>
             </div>
 
@@ -878,15 +1016,17 @@ export default function PostTuitionPage() {
                   size={19}
                   className="text-emerald-700"
                 />
+
                 <h3 className="font-bold text-[#14243a]">
-                  Preview Mode
+                  Real Submission
                 </h3>
               </div>
 
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Form validation works now. Tuition publishing,
-                ImgBB uploads and account checks are not
-                enabled yet.
+                Tuition details are saved to MongoDB
+                with pending approval status.
+                Banner uploads and subscription
+                limits are not connected yet.
               </p>
             </div>
           </aside>

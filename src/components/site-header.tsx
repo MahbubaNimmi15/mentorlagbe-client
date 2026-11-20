@@ -2,14 +2,23 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import {
   ArrowUpRight,
   GraduationCap,
+  LogOut,
   Menu,
   X,
 } from "lucide-react";
+
+type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: "student" | "tutor" | "admin";
+};
 
 const navigation = [
   { label: "Home", href: "/" },
@@ -20,11 +29,115 @@ const navigation = [
   { label: "How It Works", href: "/#how-it-works" },
 ];
 
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
+
 export function SiteHeader() {
+  const router = useRouter();
+  const pathname = usePathname();
+
   const [menuOpen, setMenuOpen] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadUser() {
+      setCheckingAuth(true);
+
+      try {
+        const saved = sessionStorage.getItem("mentorlagbe_auth");
+
+        if (!saved) {
+          if (!cancelled) {
+            setUser(null);
+          }
+          return;
+        }
+
+        const session = JSON.parse(saved) as {
+          token?: string;
+        };
+
+        if (!session.token) {
+          sessionStorage.removeItem("mentorlagbe_auth");
+
+          if (!cancelled) {
+            setUser(null);
+          }
+          return;
+        }
+
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${session.token}`,
+          },
+          cache: "no-store",
+        });
+
+        if (response.status === 401) {
+          sessionStorage.removeItem("mentorlagbe_auth");
+
+          if (!cancelled) {
+            setUser(null);
+          }
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error("Unable to verify session");
+        }
+
+        const result = (await response.json()) as {
+          success: boolean;
+          user: AuthUser;
+        };
+
+        if (!cancelled) {
+          setUser(result.success ? result.user : null);
+        }
+      } catch {
+        if (!cancelled) {
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingAuth(false);
+        }
+      }
+    }
+
+    void loadUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   function closeMenu() {
     setMenuOpen(false);
+  }
+
+  function handleLogout() {
+    sessionStorage.removeItem("mentorlagbe_auth");
+    setUser(null);
+    setMenuOpen(false);
+
+    router.replace("/sign-in");
+    router.refresh();
+  }
+
+  const dashboardHref = user
+    ? `/dashboard/${user.role}`
+    : "/dashboard";
+
+  function getNavigationHref(href: string) {
+    if (href === "/dashboard") {
+      return dashboardHref;
+    }
+
+    return href;
   }
 
   return (
@@ -56,7 +169,7 @@ export function SiteHeader() {
           {navigation.map((item) => (
             <Link
               key={item.href}
-              href={item.href}
+              href={getNavigationHref(item.href)}
               className={`whitespace-nowrap text-[12px] font-semibold transition hover:text-[#e97c53] xl:text-[13px] ${
                 item.href === "/dashboard/profile"
                   ? "text-[#e97c53]"
@@ -68,22 +181,47 @@ export function SiteHeader() {
           ))}
         </nav>
 
-        {/* Desktop Auth Buttons */}
+        {/* Desktop Authentication */}
         <div className="hidden shrink-0 items-center gap-2 lg:flex">
-          <Link
-            href="/sign-in"
-            className="whitespace-nowrap rounded-xl px-3 py-3 text-sm font-bold text-[#14243a] hover:bg-[#f7f8f5]"
-          >
-            Sign In
-          </Link>
+          {checkingAuth ? (
+            <div className="h-11 w-32 animate-pulse rounded-xl bg-[#f2f4f2]" />
+          ) : user ? (
+            <>
+              <Link
+                href={dashboardHref}
+                className="max-w-40 truncate rounded-xl px-3 py-3 text-sm font-bold text-[#14243a] hover:bg-[#f7f8f5]"
+                title={user.name}
+              >
+                {user.name}
+              </Link>
 
-          <Link
-            href="/sign-up"
-            className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-[#14243a] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#294562]"
-          >
-            Join Now
-            <ArrowUpRight size={16} />
-          </Link>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-[#14243a] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#294562]"
+              >
+                <LogOut size={16} />
+                Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/sign-in"
+                className="whitespace-nowrap rounded-xl px-3 py-3 text-sm font-bold text-[#14243a] hover:bg-[#f7f8f5]"
+              >
+                Sign In
+              </Link>
+
+              <Link
+                href="/sign-up"
+                className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-[#14243a] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#294562]"
+              >
+                Join Now
+                <ArrowUpRight size={16} />
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile Menu Toggle */}
@@ -113,7 +251,7 @@ export function SiteHeader() {
           {navigation.map((item) => (
             <Link
               key={item.href}
-              href={item.href}
+              href={getNavigationHref(item.href)}
               onClick={closeMenu}
               className={`block rounded-xl px-4 py-3 text-sm font-semibold hover:bg-[#fff9f0] ${
                 item.href === "/dashboard/profile"
@@ -127,21 +265,48 @@ export function SiteHeader() {
 
           <div className="my-3 border-t border-[#e6eae7]" />
 
-          <Link
-            href="/sign-in"
-            onClick={closeMenu}
-            className="block rounded-xl px-4 py-3 text-sm font-semibold text-[#14243a]"
-          >
-            Sign In
-          </Link>
+          {checkingAuth ? (
+            <p className="px-4 py-3 text-sm text-[#485669]">
+              Checking session...
+            </p>
+          ) : user ? (
+            <>
+              <Link
+                href={dashboardHref}
+                onClick={closeMenu}
+                className="block rounded-xl px-4 py-3 text-sm font-bold text-[#14243a]"
+              >
+                {user.name}
+              </Link>
 
-          <Link
-            href="/sign-up"
-            onClick={closeMenu}
-            className="mt-2 block rounded-xl bg-[#14243a] px-4 py-3 text-center text-sm font-bold text-white"
-          >
-            Join Now
-          </Link>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#14243a] px-4 py-3 text-sm font-bold text-white"
+              >
+                <LogOut size={16} />
+                Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/sign-in"
+                onClick={closeMenu}
+                className="block rounded-xl px-4 py-3 text-sm font-semibold text-[#14243a]"
+              >
+                Sign In
+              </Link>
+
+              <Link
+                href="/sign-up"
+                onClick={closeMenu}
+                className="mt-2 block rounded-xl bg-[#14243a] px-4 py-3 text-center text-sm font-bold text-white"
+              >
+                Join Now
+              </Link>
+            </>
+          )}
         </nav>
       )}
     </header>

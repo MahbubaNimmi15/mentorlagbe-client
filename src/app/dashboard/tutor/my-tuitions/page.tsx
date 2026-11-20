@@ -2,8 +2,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+
 import {
   ArrowLeft,
   BookOpen,
@@ -18,68 +19,43 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast-provider";
 
-type Approval = "Approved" | "Pending" | "Rejected";
-type Mode = "Online" | "Offline";
-type Filter = "All" | Approval;
+type Approval = "approved" | "pending" | "rejected";
+type Filter = "all" | Approval;
 
 type Tuition = {
   id: string;
   title: string;
   subject: string;
   classLevel: string;
-  mode: Mode;
   location: string;
-  monthlyFee: number;
-  daysPerWeek: number;
-  description: string;
-  approval: Approval;
-  active: boolean;
+  salary: number;
+  requirements?: string;
+  tutorId: string;
+  status: Approval;
+  createdAt: string;
+  updatedAt?: string;
 };
 
-const demoTuitions: Tuition[] = [
-  {
-    id: "TUI-101",
-    title: "Mathematics Tutor for Class 9-10",
-    subject: "Mathematics",
-    classLevel: "Class 9 - 10",
-    mode: "Offline",
-    location: "Dhanmondi, Dhaka",
-    monthlyFee: 5000,
-    daysPerWeek: 3,
-    description:
-      "Interactive mathematics lessons with weekly practice, exam preparation and regular progress reviews.",
-    approval: "Approved",
-    active: true,
-  },
-  {
-    id: "TUI-102",
-    title: "English Grammar and Spoken English",
-    subject: "English",
-    classLevel: "Class 6 - 8",
-    mode: "Online",
-    location: "Anywhere in Bangladesh",
-    monthlyFee: 3500,
-    daysPerWeek: 4,
-    description:
-      "Improve grammar, vocabulary and spoken English through guided exercises and practical communication.",
-    approval: "Pending",
-    active: false,
-  },
-  {
-    id: "TUI-103",
-    title: "HSC Physics Exam Preparation",
-    subject: "Physics",
-    classLevel: "HSC",
-    mode: "Offline",
-    location: "Uttara, Dhaka",
-    monthlyFee: 6000,
-    daysPerWeek: 3,
-    description:
-      "Concept-focused HSC physics lessons covering numerical problem-solving, revision and exam practice.",
-    approval: "Rejected",
-    active: false,
-  },
-];
+type EditForm = {
+  title: string;
+  subject: string;
+  classLevel: string;
+  location: string;
+  salary: number;
+  requirements: string;
+};
+
+type TuitionResponse = {
+  success: boolean;
+  total: number;
+  tuitions: Tuition[];
+};
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5001";
+
+const AUTH_KEY = "mentorlagbe_auth";
 
 const fieldClass =
   "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100";
@@ -91,59 +67,109 @@ function money(value: number) {
   return `BDT ${value.toLocaleString("en-BD")}`;
 }
 
-function ApprovalBadge({ status }: { status: Approval }) {
+function getToken(): string {
+  const saved = sessionStorage.getItem(AUTH_KEY);
+
+  if (!saved) {
+    throw new Error("Please sign in as a tutor.");
+  }
+
+  try {
+    const session = JSON.parse(saved) as {
+      token?: string;
+    };
+
+    if (
+      typeof session.token !== "string" ||
+      !session.token
+    ) {
+      throw new Error("Missing token");
+    }
+
+    return session.token;
+  } catch {
+    throw new Error(
+      "Invalid login session. Please sign in again."
+    );
+  }
+}
+
+async function responseMessage(
+  response: Response
+): Promise<string> {
+  try {
+    const result = (await response.json()) as {
+      message?: string;
+    };
+
+    return (
+      result.message ||
+      `Request failed (${response.status})`
+    );
+  } catch {
+    return `Request failed (${response.status})`;
+  }
+}
+
+function ApprovalBadge({
+  status,
+}: {
+  status: Approval;
+}) {
   const styles: Record<Approval, string> = {
-    Approved: "bg-emerald-100 text-emerald-800",
-    Pending: "bg-amber-100 text-amber-800",
-    Rejected: "bg-red-100 text-red-800",
+    approved: "bg-emerald-100 text-emerald-800",
+    pending: "bg-amber-100 text-amber-800",
+    rejected: "bg-red-100 text-red-800",
   };
 
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs font-bold ${styles[status]}`}
+      className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${styles[status]}`}
     >
       {status}
     </span>
   );
 }
 
-function validateTuition(tuition: Tuition): string | null {
-  if (tuition.title.trim().length < 8) {
-    return "Title must contain at least 8 characters.";
-  }
-
-  if (!tuition.subject.trim()) {
-    return "Subject is required.";
-  }
-
-  if (!tuition.classLevel.trim()) {
-    return "Class level is required.";
+function validateEdit(data: EditForm): string | null {
+  if (
+    data.title.trim().length < 5 ||
+    data.title.trim().length > 150
+  ) {
+    return "Title must contain 5 to 150 characters.";
   }
 
   if (
-    tuition.mode === "Offline" &&
-    !tuition.location.trim()
+    data.subject.trim().length < 2 ||
+    data.subject.trim().length > 100
   ) {
-    return "Location is required for offline tuition.";
+    return "Subject must contain 2 to 100 characters.";
   }
 
   if (
-    !Number.isInteger(tuition.monthlyFee) ||
-    tuition.monthlyFee <= 0
+    !data.classLevel.trim() ||
+    data.classLevel.trim().length > 100
   ) {
-    return "Monthly fee must be a positive whole number.";
+    return "Enter a valid class level.";
   }
 
   if (
-    !Number.isInteger(tuition.daysPerWeek) ||
-    tuition.daysPerWeek < 1 ||
-    tuition.daysPerWeek > 7
+    data.location.trim().length < 2 ||
+    data.location.trim().length > 200
   ) {
-    return "Days per week must be between 1 and 7.";
+    return "Enter a valid location.";
   }
 
-  if (tuition.description.trim().length < 30) {
-    return "Description must contain at least 30 characters.";
+  if (
+    !Number.isFinite(data.salary) ||
+    data.salary <= 0 ||
+    data.salary > 1000000
+  ) {
+    return "Salary must be between 1 and 1000000.";
+  }
+
+  if (data.requirements.trim().length > 2000) {
+    return "Requirements cannot exceed 2000 characters.";
   }
 
   return null;
@@ -152,34 +178,107 @@ function validateTuition(tuition: Tuition): string | null {
 export default function MyTuitionsPage() {
   const toast = useToast();
 
-  const [tuitions, setTuitions] = useState<Tuition[]>(() =>
-    demoTuitions.map((item) => ({ ...item }))
-  );
+  const [tuitions, setTuitions] = useState<Tuition[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<Filter>("All");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const [editing, setEditing] = useState<Tuition | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(
+    null
+  );
+
+  const [editForm, setEditForm] = useState<EditForm | null>(
+    null
+  );
+
+  const [editError, setEditError] = useState("");
+  const [saving, setSaving] = useState(false);
+
   const [deletingId, setDeletingId] = useState<string | null>(
     null
   );
-  const [editError, setEditError] = useState("");
+
+  const [deletingBusy, setDeletingBusy] = useState(false);
 
   const deleting = tuitions.find(
     (item) => item.id === deletingId
   );
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadTuitions() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const token = getToken();
+
+        const response = await fetch(
+          `${API_URL}/api/tuitions/my`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+            signal: controller.signal,
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            await responseMessage(response)
+          );
+        }
+
+        const result =
+          (await response.json()) as TuitionResponse;
+
+        if (
+          !result.success ||
+          !Array.isArray(result.tuitions)
+        ) {
+          throw new Error("Invalid tuition response.");
+        }
+
+        if (!controller.signal.aborted) {
+          setTuitions(result.tuitions);
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setTuitions([]);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Could not load tuition listings."
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadTuitions();
+
+    return () => controller.abort();
+  }, [refreshKey]);
+
   const stats = useMemo(
     () => ({
       total: tuitions.length,
       approved: tuitions.filter(
-        (item) => item.approval === "Approved"
+        (item) => item.status === "approved"
       ).length,
       pending: tuitions.filter(
-        (item) => item.approval === "Pending"
+        (item) => item.status === "pending"
       ).length,
-      active: tuitions.filter(
-        (item) => item.active
+      rejected: tuitions.filter(
+        (item) => item.status === "rejected"
       ).length,
     }),
     [tuitions]
@@ -189,7 +288,7 @@ export default function MyTuitionsPage() {
     const query = search.trim().toLowerCase();
 
     return tuitions.filter((tuition) => {
-      const text = [
+      const searchable = [
         tuition.id,
         tuition.title,
         tuition.subject,
@@ -199,177 +298,212 @@ export default function MyTuitionsPage() {
         .join(" ")
         .toLowerCase();
 
-      const matchesSearch = text.includes(query);
+      const matchesSearch = searchable.includes(query);
+
       const matchesFilter =
-        filter === "All" || tuition.approval === filter;
+        filter === "all" ||
+        tuition.status === filter;
 
       return matchesSearch && matchesFilter;
     });
   }, [tuitions, search, filter]);
 
-  function changeActive(id: string) {
-    const target = tuitions.find(
-      (tuition) => tuition.id === id
-    );
-
-    if (!target) {
-      toast.error({
-        title: "Tuition Not Found",
-        description: "The demo tuition is unavailable.",
-      });
-      return;
-    }
-
-    if (target.approval !== "Approved") {
-      toast.warning({
-        title: "Approval Required",
-        description:
-          "Only approved tuitions can be activated or deactivated.",
-      });
-      return;
-    }
-
-    const nextActive = !target.active;
-
-    setTuitions((previous) =>
-      previous.map((tuition) =>
-        tuition.id === id
-          ? { ...tuition, active: nextActive }
-          : tuition
-      )
-    );
-
-    toast.success({
-      title: nextActive
-        ? "Demo Tuition Activated"
-        : "Demo Tuition Deactivated",
-      description:
-        `"${target.title}" is now ${
-          nextActive ? "Active" : "Inactive"
-        } in this page only.`,
-    });
+  function refreshTuitions() {
+    setRefreshKey((current) => current + 1);
   }
 
   function startEdit(tuition: Tuition) {
-    setEditing({ ...tuition });
+    setEditingId(tuition.id);
+
+    setEditForm({
+      title: tuition.title,
+      subject: tuition.subject,
+      classLevel: tuition.classLevel,
+      location: tuition.location,
+      salary: tuition.salary,
+      requirements: tuition.requirements || "",
+    });
+
     setEditError("");
   }
 
-  function updateEdit<K extends keyof Tuition>(
+  function updateEdit<K extends keyof EditForm>(
     field: K,
-    value: Tuition[K]
+    value: EditForm[K]
   ) {
-    setEditing((current) =>
-      current ? { ...current, [field]: value } : null
+    setEditForm((current) =>
+      current
+        ? {
+            ...current,
+            [field]: value,
+          }
+        : null
     );
+
     setEditError("");
   }
 
-  function saveEdit(event: FormEvent<HTMLFormElement>) {
+  function closeEdit() {
+    if (saving) return;
+
+    setEditingId(null);
+    setEditForm(null);
+    setEditError("");
+  }
+
+  async function saveEdit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
-    if (!editing) return;
+    if (!editingId || !editForm || saving) return;
 
-    const error = validateTuition(editing);
+    const validationError = validateEdit(editForm);
 
-    if (error) {
-      setEditError(error);
+    if (validationError) {
+      setEditError(validationError);
 
       toast.error({
-        title: "Unable to Save Demo Tuition",
-        description: error,
+        title: "Invalid Tuition",
+        description: validationError,
       });
 
       return;
     }
 
-    const updated: Tuition = {
-      ...editing,
-      title: editing.title.trim(),
-      subject: editing.subject.trim(),
-      classLevel: editing.classLevel.trim(),
-      location: editing.location.trim(),
-      description: editing.description.trim(),
-    };
-
-    setTuitions((previous) =>
-      previous.map((tuition) =>
-        tuition.id === updated.id ? updated : tuition
-      )
-    );
-
-    setEditing(null);
+    setSaving(true);
     setEditError("");
 
-    toast.success({
-      title: "Demo Tuition Updated",
-      description:
-        `"${updated.title}" was updated locally. Nothing was saved to MongoDB.`,
-    });
-  }
+    try {
+      const token = getToken();
 
-  function requestDelete(id: string) {
-    const target = tuitions.find(
-      (tuition) => tuition.id === id
-    );
+      const response = await fetch(
+        `${API_URL}/api/tuitions/${editingId}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: editForm.title.trim(),
+            subject: editForm.subject.trim(),
+            classLevel: editForm.classLevel.trim(),
+            location: editForm.location.trim(),
+            salary: editForm.salary,
+            requirements: editForm.requirements.trim(),
+          }),
+        }
+      );
 
-    if (!target) {
-      toast.error({
-        title: "Tuition Not Found",
-        description: "The demo listing is unavailable.",
+      if (!response.ok) {
+        throw new Error(
+          await responseMessage(response)
+        );
+      }
+
+      const result = (await response.json()) as {
+        success: boolean;
+        tuition?: Tuition;
+      };
+
+      if (!result.success || !result.tuition) {
+        throw new Error("Invalid update response.");
+      }
+
+      setTuitions((previous) =>
+        previous.map((item) =>
+          item.id === editingId
+            ? result.tuition!
+            : item
+        )
+      );
+
+      setEditingId(null);
+      setEditForm(null);
+
+      toast.success({
+        title: "Tuition Updated",
+        description:
+          "Changes were saved to MongoDB. The tuition is pending admin approval.",
       });
-      return;
-    }
 
-    setDeletingId(id);
+      refreshTuitions();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Unable to update tuition.";
+
+      setEditError(message);
+
+      toast.error({
+        title: "Update Failed",
+        description: message,
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function deleteTuition() {
-    if (!deletingId) return;
+  async function deleteTuition() {
+    if (!deletingId || deletingBusy) return;
 
-    const target = tuitions.find(
-      (tuition) => tuition.id === deletingId
-    );
+    setDeletingBusy(true);
 
-    if (!target) {
+    try {
+      const token = getToken();
+
+      const response = await fetch(
+        `${API_URL}/api/tuitions/${deletingId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await responseMessage(response)
+        );
+      }
+
+      const result = (await response.json()) as {
+        success: boolean;
+      };
+
+      if (!result.success) {
+        throw new Error("Delete confirmation failed.");
+      }
+
+      setTuitions((previous) =>
+        previous.filter(
+          (item) => item.id !== deletingId
+        )
+      );
+
       setDeletingId(null);
 
-      toast.error({
-        title: "Unable to Delete",
-        description: "The selected demo listing was not found.",
+      toast.success({
+        title: "Tuition Deleted",
+        description:
+          "The tuition was deleted from MongoDB.",
       });
 
-      return;
+      refreshTuitions();
+    } catch (err) {
+      toast.error({
+        title: "Delete Failed",
+        description:
+          err instanceof Error
+            ? err.message
+            : "Unable to delete tuition.",
+      });
+    } finally {
+      setDeletingBusy(false);
     }
-
-    setTuitions((previous) =>
-      previous.filter((tuition) => tuition.id !== deletingId)
-    );
-
-    setDeletingId(null);
-
-    toast.success({
-      title: "Demo Tuition Removed",
-      description:
-        `"${target.title}" was removed from the current page only. No database record was deleted.`,
-    });
-  }
-
-  function resetDemo() {
-    setTuitions(
-      demoTuitions.map((tuition) => ({ ...tuition }))
-    );
-    setSearch("");
-    setFilter("All");
-    setEditing(null);
-    setDeletingId(null);
-    setEditError("");
-
-    toast.info({
-      title: "Demo Listings Restored",
-      description:
-        "The original three sample tuition listings are available again.",
-    });
   }
 
   return (
@@ -395,7 +529,8 @@ export default function MyTuitionsPage() {
             </h1>
 
             <p className="mt-2 text-sm text-slate-600">
-              Manage tuition listings, approval and availability.
+              Manage your tuition listings and approval
+              status.
             </p>
           </div>
 
@@ -408,21 +543,29 @@ export default function MyTuitionsPage() {
           </Link>
         </header>
 
-        {/* Demo notice */}
-        <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm leading-6 text-orange-900">
-          <strong>Demo Mode:</strong> These are sample tuition
-          listings. Changes work only while this page is open.
-          Refreshing restores the original records. Nothing
-          is saved to MongoDB.
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">
+          <strong>MongoDB Management:</strong> Your
+          tuition listings load from the database.
+          Editing sends a listing back for admin
+          approval. Deleting permanently removes it.
         </div>
+
+        {error && (
+          <div
+            role="alert"
+            className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          >
+            {error}
+          </div>
+        )}
 
         {/* Statistics */}
         <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[
             ["Total Tuitions", stats.total],
             ["Approved", stats.approved],
-            ["Active", stats.active],
             ["Pending", stats.pending],
+            ["Rejected", stats.rejected],
           ].map(([label, value]) => (
             <div
               key={String(label)}
@@ -431,8 +574,13 @@ export default function MyTuitionsPage() {
               <p className="text-xs font-semibold text-slate-500">
                 {label}
               </p>
+
               <p className="mt-3 text-3xl font-extrabold text-[#14243a]">
-                {value}
+                {loading
+                  ? "..."
+                  : error
+                    ? "N/A"
+                    : value}
               </p>
             </div>
           ))}
@@ -454,18 +602,22 @@ export default function MyTuitionsPage() {
 
             <button
               type="button"
-              onClick={resetDemo}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+              onClick={refreshTuitions}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
             >
               <RotateCcw size={15} />
-              Reset Demo
+              Refresh Data
             </button>
           </div>
 
           {/* Filters */}
           <div className="mb-6 grid gap-3 sm:grid-cols-[1fr_190px]">
             <div>
-              <label htmlFor="search" className="sr-only">
+              <label
+                htmlFor="search"
+                className="sr-only"
+              >
                 Search tuition
               </label>
 
@@ -482,7 +634,10 @@ export default function MyTuitionsPage() {
             </div>
 
             <div>
-              <label htmlFor="status" className="sr-only">
+              <label
+                htmlFor="status"
+                className="sr-only"
+              >
                 Approval status
               </label>
 
@@ -491,20 +646,48 @@ export default function MyTuitionsPage() {
                 className={fieldClass}
                 value={filter}
                 onChange={(event) =>
-                  setFilter(event.target.value as Filter)
+                  setFilter(
+                    event.target.value as Filter
+                  )
                 }
               >
-                <option value="All">All Statuses</option>
-                <option value="Approved">Approved</option>
-                <option value="Pending">Pending</option>
-                <option value="Rejected">Rejected</option>
+                <option value="all">
+                  All Statuses
+                </option>
+                <option value="approved">
+                  Approved
+                </option>
+                <option value="pending">
+                  Pending
+                </option>
+                <option value="rejected">
+                  Rejected
+                </option>
               </select>
             </div>
           </div>
 
           {/* Tuition cards */}
           <div className="space-y-4">
-            {visibleTuitions.length === 0 ? (
+            {loading ? (
+              <div className="rounded-2xl bg-slate-50 p-10 text-center">
+                Loading tuition listings...
+              </div>
+            ) : error ? (
+              <div className="rounded-2xl bg-red-50 p-10 text-center">
+                <p className="font-semibold text-red-700">
+                  Could not load tuition data.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={refreshTuitions}
+                  className="mt-4 rounded-xl bg-[#14243a] px-5 py-3 text-sm font-bold text-white"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : visibleTuitions.length === 0 ? (
               <div className="rounded-2xl bg-slate-50 p-10 text-center">
                 <BookOpen
                   size={36}
@@ -516,7 +699,9 @@ export default function MyTuitionsPage() {
                 </p>
 
                 <p className="mt-2 text-sm text-slate-500">
-                  Try changing your search or filter.
+                  {tuitions.length === 0
+                    ? "Create your first tuition post."
+                    : "Try changing your search or filter."}
                 </p>
               </div>
             ) : (
@@ -527,29 +712,17 @@ export default function MyTuitionsPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap gap-2">
+                      <div className="mb-3">
                         <ApprovalBadge
-                          status={tuition.approval}
+                          status={tuition.status}
                         />
-
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            tuition.active
-                              ? "bg-[#e3f4e8] text-[#28765b]"
-                              : "bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          {tuition.active
-                            ? "Active"
-                            : "Inactive"}
-                        </span>
                       </div>
 
-                      <p className="mt-3 text-xs text-slate-400">
-                        {tuition.id}
+                      <p className="break-all text-xs text-slate-400">
+                        ID: {tuition.id}
                       </p>
 
-                      <h3 className="mt-1 text-lg font-bold text-[#14243a]">
+                      <h3 className="mt-2 text-lg font-bold text-[#14243a]">
                         {tuition.title}
                       </h3>
 
@@ -559,14 +732,13 @@ export default function MyTuitionsPage() {
                       </p>
 
                       <p className="mt-1 text-sm text-slate-500">
-                        {tuition.mode} | {tuition.location}
+                        {tuition.location}
                       </p>
 
                       <p className="mt-3 text-sm font-bold text-[#14243a]">
-                        {money(tuition.monthlyFee)}
+                        {money(tuition.salary)}
                         <span className="font-normal text-slate-500">
-                          {" "}/ month |{" "}
-                          {tuition.daysPerWeek} days/week
+                          {" "}/ month
                         </span>
                       </p>
                     </div>
@@ -574,7 +746,9 @@ export default function MyTuitionsPage() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => startEdit(tuition)}
+                        onClick={() =>
+                          startEdit(tuition)
+                        }
                         className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
                       >
                         <Pencil size={14} />
@@ -583,24 +757,18 @@ export default function MyTuitionsPage() {
 
                       <button
                         type="button"
-                        disabled={
-                          tuition.approval !== "Approved"
-                        }
-                        onClick={() =>
-                          changeActive(tuition.id)
-                        }
-                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled
+                        title="Activation API is not connected yet"
+                        className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl border border-emerald-200 px-4 py-2 text-xs font-bold text-emerald-500 opacity-60"
                       >
                         <CheckCircle2 size={14} />
-                        {tuition.active
-                          ? "Deactivate"
-                          : "Activate"}
+                        Activate
                       </button>
 
                       <button
                         type="button"
                         onClick={() =>
-                          requestDelete(tuition.id)
+                          setDeletingId(tuition.id)
                         }
                         className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
                       >
@@ -610,9 +778,11 @@ export default function MyTuitionsPage() {
                     </div>
                   </div>
 
-                  <p className="mt-4 border-t border-slate-100 pt-4 text-sm leading-6 text-slate-500">
-                    {tuition.description}
-                  </p>
+                  {tuition.requirements && (
+                    <p className="mt-4 border-t border-slate-100 pt-4 text-sm leading-6 text-slate-500">
+                      {tuition.requirements}
+                    </p>
+                  )}
                 </article>
               ))
             )}
@@ -621,7 +791,7 @@ export default function MyTuitionsPage() {
       </div>
 
       {/* Edit modal */}
-      {editing && (
+      {editingId && editForm && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#14243a]/70 p-4">
           <section
             role="dialog"
@@ -639,7 +809,8 @@ export default function MyTuitionsPage() {
 
               <button
                 type="button"
-                onClick={() => setEditing(null)}
+                onClick={closeEdit}
+                disabled={saving}
                 aria-label="Close edit form"
                 className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
               >
@@ -648,12 +819,12 @@ export default function MyTuitionsPage() {
             </div>
 
             <p className="mt-2 text-xs text-orange-700">
-              Demo editing only - no database update.
+              Changes will be saved to MongoDB and
+              submitted for admin approval.
             </p>
 
             <form
               onSubmit={saveEdit}
-              noValidate
               className="mt-5 space-y-4"
             >
               <div>
@@ -667,9 +838,12 @@ export default function MyTuitionsPage() {
                 <input
                   id="edit-title"
                   className={fieldClass}
-                  value={editing.title}
+                  value={editForm.title}
                   onChange={(event) =>
-                    updateEdit("title", event.target.value)
+                    updateEdit(
+                      "title",
+                      event.target.value
+                    )
                   }
                 />
               </div>
@@ -686,7 +860,7 @@ export default function MyTuitionsPage() {
                   <input
                     id="edit-subject"
                     className={fieldClass}
-                    value={editing.subject}
+                    value={editForm.subject}
                     onChange={(event) =>
                       updateEdit(
                         "subject",
@@ -707,7 +881,7 @@ export default function MyTuitionsPage() {
                   <input
                     id="edit-class"
                     className={fieldClass}
-                    value={editing.classLevel}
+                    value={editForm.classLevel}
                     onChange={(event) =>
                       updateEdit(
                         "classLevel",
@@ -718,124 +892,67 @@ export default function MyTuitionsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="edit-mode"
-                    className={labelClass}
-                  >
-                    Mode
-                  </label>
+              <div>
+                <label
+                  htmlFor="edit-location"
+                  className={labelClass}
+                >
+                  Location
+                </label>
 
-                  <select
-                    id="edit-mode"
-                    className={fieldClass}
-                    value={editing.mode}
-                    onChange={(event) =>
-                      updateEdit(
-                        "mode",
-                        event.target.value as Mode
-                      )
-                    }
-                  >
-                    <option value="Online">Online</option>
-                    <option value="Offline">Offline</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-location"
-                    className={labelClass}
-                  >
-                    Location
-                  </label>
-
-                  <input
-                    id="edit-location"
-                    className={fieldClass}
-                    value={editing.location}
-                    onChange={(event) =>
-                      updateEdit(
-                        "location",
-                        event.target.value
-                      )
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="edit-fee"
-                    className={labelClass}
-                  >
-                    Monthly Fee (BDT)
-                  </label>
-
-                  <input
-                    id="edit-fee"
-                    type="number"
-                    min={1}
-                    step={1}
-                    className={fieldClass}
-                    value={editing.monthlyFee}
-                    onChange={(event) =>
-                      updateEdit(
-                        "monthlyFee",
-                        event.target.value === ""
-                          ? 0
-                          : Number(event.target.value)
-                      )
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-days"
-                    className={labelClass}
-                  >
-                    Days Per Week
-                  </label>
-
-                  <select
-                    id="edit-days"
-                    className={fieldClass}
-                    value={editing.daysPerWeek}
-                    onChange={(event) =>
-                      updateEdit(
-                        "daysPerWeek",
-                        Number(event.target.value)
-                      )
-                    }
-                  >
-                    {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                      <option key={day} value={day}>
-                        {day}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <input
+                  id="edit-location"
+                  className={fieldClass}
+                  value={editForm.location}
+                  onChange={(event) =>
+                    updateEdit(
+                      "location",
+                      event.target.value
+                    )
+                  }
+                />
               </div>
 
               <div>
                 <label
-                  htmlFor="edit-description"
+                  htmlFor="edit-salary"
                   className={labelClass}
                 >
-                  Description
+                  Monthly Salary (BDT)
+                </label>
+
+                <input
+                  id="edit-salary"
+                  type="number"
+                  min={1}
+                  max={1000000}
+                  className={fieldClass}
+                  value={editForm.salary}
+                  onChange={(event) =>
+                    updateEdit(
+                      "salary",
+                      Number(event.target.value)
+                    )
+                  }
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-requirements"
+                  className={labelClass}
+                >
+                  Requirements
                 </label>
 
                 <textarea
-                  id="edit-description"
+                  id="edit-requirements"
                   rows={4}
                   className={fieldClass}
-                  value={editing.description}
+                  value={editForm.requirements}
                   onChange={(event) =>
                     updateEdit(
-                      "description",
+                      "requirements",
                       event.target.value
                     )
                   }
@@ -854,7 +971,8 @@ export default function MyTuitionsPage() {
               <div className="flex flex-wrap justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setEditing(null)}
+                  onClick={closeEdit}
+                  disabled={saving}
                   className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold"
                 >
                   Cancel
@@ -862,9 +980,12 @@ export default function MyTuitionsPage() {
 
                 <button
                   type="submit"
-                  className="rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white hover:bg-[#d96c45]"
+                  disabled={saving}
+                  className="rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white hover:bg-[#d96c45] disabled:opacity-50"
                 >
-                  Save Demo Changes
+                  {saving
+                    ? "Saving..."
+                    : "Save Changes"}
                 </button>
               </div>
             </form>
@@ -872,24 +993,35 @@ export default function MyTuitionsPage() {
         </div>
       )}
 
-      {/* Reusable delete confirmation */}
+      {/* Delete confirmation */}
       <ConfirmDialog
         open={Boolean(deleting)}
         title="Delete Tuition?"
         description={
           deleting
-            ? `Are you sure you want to remove "${deleting.title}" from this demo session?`
-            : "Confirm deletion of the selected demo tuition."
+            ? `Permanently delete "${deleting.title}"?`
+            : "Confirm deletion."
         }
-        confirmLabel="Delete Demo Tuition"
+        confirmLabel={
+          deletingBusy
+            ? "Deleting..."
+            : "Delete Tuition"
+        }
         variant="danger"
-        onCancel={() => setDeletingId(null)}
-        onConfirm={deleteTuition}
+        onCancel={() => {
+          if (!deletingBusy) {
+            setDeletingId(null);
+          }
+        }}
+        onConfirm={() => {
+          if (!deletingBusy) {
+            void deleteTuition();
+          }
+        }}
       >
-        <p className="text-sm">
-          This action removes only the sample listing
-          from the current page. No MongoDB record
-          will be deleted.
+        <p className="text-sm text-red-700">
+          This will permanently delete the tuition
+          from MongoDB. This action cannot be undone.
         </p>
       </ConfirmDialog>
     </main>
