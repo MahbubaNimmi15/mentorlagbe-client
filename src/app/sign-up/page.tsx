@@ -4,6 +4,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import {
   AlertCircle,
@@ -26,9 +27,26 @@ type FormValues = {
   role: Role;
 };
 
-type FormErrors = Partial<
-  Record<keyof FormValues, string>
->;
+type FormErrors = Partial<Record<keyof FormValues, string>>;
+
+type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+};
+
+type RegisterResponse = {
+  success: boolean;
+  message?: string;
+  token?: string;
+  user?: AuthUser;
+  errors?: Record<string, string[] | undefined>;
+};
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5001";
 
 const initialValues: FormValues = {
   name: "",
@@ -54,27 +72,38 @@ function validateForm(values: FormValues): FormErrors {
   if (values.password.length < 8) {
     errors.password =
       "Password must have at least 8 characters.";
+  } else if (values.password.length > 72) {
+    errors.password =
+      "Password must not exceed 72 characters.";
+  } else if (
+    !/[A-Z]/.test(values.password) ||
+    !/[a-z]/.test(values.password) ||
+    !/[0-9]/.test(values.password)
+  ) {
+    errors.password =
+      "Use uppercase, lowercase, and a number.";
   }
 
   if (
     !values.confirmPassword ||
     values.password !== values.confirmPassword
   ) {
-    errors.confirmPassword =
-      "Your passwords must match.";
+    errors.confirmPassword = "Your passwords must match.";
   }
 
   return errors;
 }
 
 export default function SignUpPage() {
+  const router = useRouter();
+
   const [values, setValues] =
     useState<FormValues>(initialValues);
-
   const [errors, setErrors] = useState<FormErrors>({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   function updateField<K extends keyof FormValues>(
     field: K,
@@ -93,8 +122,14 @@ export default function SignUpPage() {
     setMessage("");
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
+
+    if (isLoading) return;
+
+    setMessage("");
 
     const validationErrors = validateForm(values);
     setErrors(validationErrors);
@@ -104,11 +139,91 @@ export default function SignUpPage() {
       return;
     }
 
-    // Better Auth integration will be added later.
-    // Do not store passwords or simulate account creation.
-    setMessage(
-      "Your information is valid. Account registration will be available after Better Auth and MongoDB integration."
-    );
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/auth/register`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: values.name.trim(),
+            email: values.email.trim().toLowerCase(),
+            password: values.password,
+            role: values.role,
+          }),
+          cache: "no-store",
+        }
+      );
+
+      const data: RegisterResponse = await response.json();
+
+      if (
+        !response.ok ||
+        !data.success ||
+        !data.token ||
+        !data.user
+      ) {
+        if (data.errors) {
+          const nextErrors: FormErrors = {};
+
+          for (const key of [
+            "name",
+            "email",
+            "password",
+            "role",
+          ] as const) {
+            const fieldErrors = data.errors[key];
+
+            if (fieldErrors?.length) {
+              nextErrors[key] = fieldErrors[0];
+            }
+          }
+
+          setErrors(nextErrors);
+        }
+
+        setMessage(
+          data.message || "Unable to create account."
+        );
+        return;
+      }
+
+      // Temporary session for local development.
+      // Production will use a secure server-managed session.
+      sessionStorage.setItem(
+        "mentorlagbe_auth",
+        JSON.stringify({
+          token: data.token,
+          user: data.user,
+        })
+      );
+
+      setValues((previous) => ({
+        ...previous,
+        password: "",
+        confirmPassword: "",
+      }));
+
+      setMessage("Account created successfully!");
+
+      const destination =
+        data.user.role === "tutor"
+          ? "/dashboard/tutor"
+          : "/dashboard/student";
+
+      router.push(destination);
+      router.refresh();
+    } catch {
+      setMessage(
+        "Cannot connect to the server. Check that the MentorLagbe backend is running on port 5001."
+      );
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -122,7 +237,7 @@ export default function SignUpPage() {
         noValidate
         className="space-y-5"
       >
-        <fieldset>
+        <fieldset disabled={isLoading}>
           <legend className="mb-3 text-sm font-bold text-[#36475a]">
             I want to join as
           </legend>
@@ -180,6 +295,7 @@ export default function SignUpPage() {
             type="text"
             autoComplete="name"
             value={values.name}
+            disabled={isLoading}
             onChange={(event) =>
               updateField("name", event.target.value)
             }
@@ -206,6 +322,7 @@ export default function SignUpPage() {
             type="email"
             autoComplete="email"
             value={values.email}
+            disabled={isLoading}
             onChange={(event) =>
               updateField("email", event.target.value)
             }
@@ -234,6 +351,7 @@ export default function SignUpPage() {
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
               value={values.password}
+              disabled={isLoading}
               onChange={(event) =>
                 updateField("password", event.target.value)
               }
@@ -279,6 +397,7 @@ export default function SignUpPage() {
               type={showConfirm ? "text" : "password"}
               autoComplete="new-password"
               value={values.confirmPassword}
+              disabled={isLoading}
               onChange={(event) =>
                 updateField(
                   "confirmPassword",
@@ -330,9 +449,10 @@ export default function SignUpPage() {
 
         <button
           type="submit"
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#14243a] px-5 py-4 text-sm font-extrabold text-white transition hover:bg-[#294562]"
+          disabled={isLoading}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#14243a] px-5 py-4 text-sm font-extrabold text-white transition hover:bg-[#294562] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Continue
+          {isLoading ? "Creating Account..." : "Continue"}
           <ArrowRight size={18} />
         </button>
 
@@ -347,8 +467,8 @@ export default function SignUpPage() {
         </p>
 
         <p className="text-center text-xs leading-6 text-[#8a96a0]">
-          UI preview only. No account or password is
-          stored or transmitted yet.
+          Your account will be created after secure
+          server-side validation.
         </p>
       </form>
     </AuthLayout>
