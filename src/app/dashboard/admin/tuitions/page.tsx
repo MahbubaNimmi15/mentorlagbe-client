@@ -1,8 +1,10 @@
 
+
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
 import {
   ArrowLeft,
   CheckCircle2,
@@ -19,116 +21,32 @@ import { useToast } from "@/components/ui/toast-provider";
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
 type StatusFilter = ApprovalStatus | "all";
+type ActionType = "approve" | "reject";
 
 type Tuition = {
   id: string;
   title: string;
-  tutorName: string;
-  tutorEmail: string;
+  tutorId: string;
   subject: string;
   classLevel: string;
-  mode: "Online" | "Offline";
   location: string;
-  monthlyFee: number;
-  daysPerWeek: number;
-  description: string;
+  salary: number;
+  requirements?: string;
+  status: ApprovalStatus;
   createdAt: string;
-  approvalStatus: ApprovalStatus;
-  isActive: boolean;
+  updatedAt?: string;
+  isActive?: boolean;
 };
 
-type Confirmation = {
-  id: string;
-  nextStatus: "approved" | "rejected";
+type TuitionResponse = {
+  success: boolean;
+  total?: number;
+  tuitions: Tuition[];
 };
 
-const initialTuitions: Tuition[] = [
-  {
-    id: "TUI-101",
-    title: "Mathematics Tutor for Class 9-10",
-    tutorName: "Ayesha Rahman",
-    tutorEmail: "ayesha@example.com",
-    subject: "Mathematics",
-    classLevel: "Class 9 - 10",
-    mode: "Offline",
-    location: "Dhanmondi, Dhaka",
-    monthlyFee: 5000,
-    daysPerWeek: 3,
-    description:
-      "Mathematics tuition covering algebra, geometry and exam preparation.",
-    createdAt: "2026-11-15",
-    approvalStatus: "pending",
-    isActive: true,
-  },
-  {
-    id: "TUI-102",
-    title: "English Grammar and Spoken English",
-    tutorName: "Tanvir Hasan",
-    tutorEmail: "tanvir@example.com",
-    subject: "English",
-    classLevel: "HSC",
-    mode: "Online",
-    location: "Bangladesh",
-    monthlyFee: 3500,
-    daysPerWeek: 2,
-    description:
-      "Interactive grammar lessons, speaking practice and writing improvement.",
-    createdAt: "2026-11-14",
-    approvalStatus: "approved",
-    isActive: true,
-  },
-  {
-    id: "TUI-103",
-    title: "Physics Preparation for HSC",
-    tutorName: "Nabil Ahmed",
-    tutorEmail: "nabil@example.com",
-    subject: "Physics",
-    classLevel: "HSC",
-    mode: "Offline",
-    location: "Uttara, Dhaka",
-    monthlyFee: 6000,
-    daysPerWeek: 3,
-    description:
-      "Concept-based Physics learning with numerical problem-solving sessions.",
-    createdAt: "2026-11-13",
-    approvalStatus: "pending",
-    isActive: true,
-  },
-  {
-    id: "TUI-104",
-    title: "ICT and Programming Fundamentals",
-    tutorName: "Samira Islam",
-    tutorEmail: "samira@example.com",
-    subject: "ICT",
-    classLevel: "University",
-    mode: "Online",
-    location: "Bangladesh",
-    monthlyFee: 4500,
-    daysPerWeek: 2,
-    description:
-      "Introduction to coding, computing fundamentals and practical projects.",
-    createdAt: "2026-11-12",
-    approvalStatus: "rejected",
-    isActive: false,
-  },
-  {
-    id: "TUI-105",
-    title: "Biology and Chemistry for SSC",
-    tutorName: "Farhan Kabir",
-    tutorEmail: "farhan@example.com",
-    subject: "Biology",
-    classLevel: "SSC",
-    mode: "Offline",
-    location: "Mirpur, Dhaka",
-    monthlyFee: 4000,
-    daysPerWeek: 4,
-    description:
-      "Structured lessons for Biology and Chemistry with regular mock tests.",
-    createdAt: "2026-11-11",
-    approvalStatus: "pending",
-    isActive: true,
-  },
-];
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5001";
 
 const statusColors: Record<ApprovalStatus, string> = {
   pending: "bg-amber-100 text-amber-800",
@@ -141,50 +59,172 @@ function capitalize(value: string) {
 }
 
 function formatMoney(value: number) {
-  return `BDT ${value.toLocaleString("en-BD")}`;
+  return `BDT ${Number(value).toLocaleString("en-BD")}`;
 }
 
 function formatDate(value: string) {
-  return new Date(`${value}T12:00:00`).toLocaleDateString(
-    "en-GB",
-    { day: "2-digit", month: "short", year: "numeric" }
-  );
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "N/A";
+  }
+
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getToken() {
+  const saved = sessionStorage.getItem("mentorlagbe_auth");
+
+  if (!saved) {
+    throw new Error("Please sign in as an admin.");
+  }
+
+  try {
+    const session = JSON.parse(saved) as {
+      token?: string;
+    };
+
+    if (!session.token) {
+      throw new Error("Missing authentication token");
+    }
+
+    return session.token;
+  } catch {
+    throw new Error(
+      "Invalid session. Please sign in again."
+    );
+  }
+}
+
+async function getErrorMessage(response: Response) {
+  try {
+    const data = (await response.json()) as {
+      message?: string;
+    };
+
+    return (
+      data.message ||
+      `Request failed (${response.status})`
+    );
+  } catch {
+    return `Request failed (${response.status})`;
+  }
 }
 
 export default function AdminTuitionsPage() {
   const toast = useToast();
 
-  const [tuitions, setTuitions] = useState<Tuition[]>(() =>
-    initialTuitions.map((tuition) => ({ ...tuition }))
-  );
+  const [tuitions, setTuitions] = useState<Tuition[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<StatusFilter>("all");
-  const [selectedId, setSelectedId] = useState<string | null>(
-    null
-  );
-  const [confirmation, setConfirmation] =
-    useState<Confirmation | null>(null);
+
+  const [selectedId, setSelectedId] =
+    useState<string | null>(null);
+
+  const [confirmation, setConfirmation] = useState<{
+    id: string;
+    action: ActionType;
+  } | null>(null);
+
+  const [processing, setProcessing] = useState(false);
+
+  // Load tuition records from MongoDB API
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadTuitions() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const token = getToken();
+
+        const response = await fetch(
+          `${API_URL}/api/tuitions/admin/all`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+            signal: controller.signal,
+          }
+        );
+
+        if (!response.ok) {
+          if (response.status === 403) {
+            throw new Error(
+              "Access denied. An admin account is required."
+            );
+          }
+
+          throw new Error(
+            await getErrorMessage(response)
+          );
+        }
+
+        const data =
+          (await response.json()) as TuitionResponse;
+
+        if (
+          !data.success ||
+          !Array.isArray(data.tuitions)
+        ) {
+          throw new Error("Invalid tuition response.");
+        }
+
+        if (!controller.signal.aborted) {
+          setTuitions(data.tuitions);
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setTuitions([]);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load tuition records."
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadTuitions();
+
+    return () => controller.abort();
+  }, [refreshKey]);
 
   const selectedTuition = tuitions.find(
     (tuition) => tuition.id === selectedId
   );
 
-  const confirmationTuition = confirmation
-    ? tuitions.find((tuition) => tuition.id === confirmation.id)
-    : null;
+  const confirmationTuition = tuitions.find(
+    (tuition) => tuition.id === confirmation?.id
+  );
 
   const stats = useMemo(
     () => ({
       total: tuitions.length,
       pending: tuitions.filter(
-        (tuition) => tuition.approvalStatus === "pending"
+        (tuition) => tuition.status === "pending"
       ).length,
       approved: tuitions.filter(
-        (tuition) => tuition.approvalStatus === "approved"
+        (tuition) => tuition.status === "approved"
       ).length,
       rejected: tuitions.filter(
-        (tuition) => tuition.approvalStatus === "rejected"
+        (tuition) => tuition.status === "rejected"
       ).length,
     }),
     [tuitions]
@@ -197,9 +237,9 @@ export default function AdminTuitionsPage() {
       const matchesSearch = [
         tuition.id,
         tuition.title,
-        tuition.tutorName,
-        tuition.tutorEmail,
+        tuition.tutorId,
         tuition.subject,
+        tuition.classLevel,
         tuition.location,
       ]
         .join(" ")
@@ -208,100 +248,113 @@ export default function AdminTuitionsPage() {
 
       const matchesStatus =
         statusFilter === "all" ||
-        tuition.approvalStatus === statusFilter;
+        tuition.status === statusFilter;
 
       return matchesSearch && matchesStatus;
     });
   }, [tuitions, search, statusFilter]);
 
-  function requestApproval(
-    id: string,
-    nextStatus: "approved" | "rejected"
-  ) {
-    const tuition = tuitions.find((item) => item.id === id);
-
-    if (!tuition) {
-      toast.error({
-        title: "Tuition Not Found",
-        description: "The demo record is unavailable.",
-      });
-      return;
-    }
-
-    if (tuition.approvalStatus === nextStatus) {
-      toast.warning({
-        title: "Status Already Applied",
-        description: `This tuition is already ${nextStatus}.`,
-      });
-      return;
-    }
-
-    setSelectedId(null);
-    setConfirmation({ id, nextStatus });
+  function refreshTuitions() {
+    setRefreshKey((current) => current + 1);
   }
 
-  function confirmApproval() {
-    if (!confirmation) return;
+  // Handles BOTH Approve and Reject
+  async function confirmAction() {
+    if (!confirmation || processing) return;
+
+    const { id, action } = confirmation;
 
     const tuition = tuitions.find(
-      (item) => item.id === confirmation.id
+      (item) => item.id === id
     );
 
-    if (!tuition) {
+    if (!tuition || tuition.status !== "pending") {
       setConfirmation(null);
-      toast.error({
-        title: "Unable to Update",
-        description: "The selected tuition was not found.",
-      });
       return;
     }
 
-    const nextStatus = confirmation.nextStatus;
+    setProcessing(true);
 
-    setTuitions((current) =>
-      current.map((item) =>
-        item.id === confirmation.id
-          ? { ...item, approvalStatus: nextStatus }
-          : item
-      )
-    );
+    try {
+      const token = getToken();
 
-    setConfirmation(null);
+      const endpoint =
+        action === "approve" ? "approve" : "reject";
 
-    if (nextStatus === "approved") {
-      toast.success({
-        title: "Demo Tuition Approved",
+      const response = await fetch(
+        `${API_URL}/api/tuitions/${id}/${endpoint}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await getErrorMessage(response)
+        );
+      }
+
+      const result = (await response.json()) as {
+        success: boolean;
+        tuition?: Tuition;
+        message?: string;
+      };
+
+      if (!result.success) {
+        throw new Error(
+          result.message || "Action failed."
+        );
+      }
+
+      if (result.tuition) {
+        const updatedTuition = result.tuition;
+
+        setTuitions((previous) =>
+          previous.map((item) =>
+            item.id === id ? updatedTuition : item
+          )
+        );
+      }
+
+      setConfirmation(null);
+
+      if (action === "approve") {
+        toast.success({
+          title: "Tuition Approved",
+          description: `"${tuition.title}" was approved successfully.`,
+        });
+      } else {
+        toast.success({
+          title: "Tuition Rejected",
+          description: `"${tuition.title}" was rejected successfully.`,
+        });
+      }
+
+      refreshTuitions();
+    } catch (err) {
+      toast.error({
+        title:
+          action === "approve"
+            ? "Approval Failed"
+            : "Rejection Failed",
         description:
-          `"${tuition.title}" is approved in local preview only.`,
+          err instanceof Error
+            ? err.message
+            : "Unable to update tuition.",
       });
-    } else {
-      toast.warning({
-        title: "Demo Tuition Rejected",
-        description:
-          `"${tuition.title}" is rejected in local preview only.`,
-      });
+    } finally {
+      setProcessing(false);
     }
-  }
-
-  function resetDemo() {
-    setTuitions(
-      initialTuitions.map((tuition) => ({ ...tuition }))
-    );
-    setSearch("");
-    setStatusFilter("all");
-    setSelectedId(null);
-    setConfirmation(null);
-
-    toast.info({
-      title: "Demo Records Restored",
-      description:
-        "Original tuition approval statuses have been restored.",
-    });
   }
 
   return (
     <main className="min-h-screen bg-[#fff9f0] px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-7xl space-y-7">
+        {/* HEADER */}
+
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <Link
@@ -321,21 +374,38 @@ export default function AdminTuitionsPage() {
             </h1>
 
             <p className="mt-2 text-sm text-slate-600">
-              Review and moderate sample tuition listings.
+              Review, approve and reject tuition submissions.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-800">
+          <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
             <ShieldCheck size={18} />
-            Demo Mode
+            MongoDB Management
           </div>
         </header>
 
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-          <strong>Demo Data Only:</strong> Approval and
-          rejection update temporary local state. No real
-          listing is published, removed or changed.
+        {/* INFORMATION */}
+
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">
+          <strong>Real Tuition Data:</strong>{" "}
+          Tuition submissions are loaded from MongoDB.
+          Pending listings can be approved or rejected.
+          Only approved and active listings appear in
+          the public Tuition API.
         </div>
+
+        {/* ERROR */}
+
+        {error && (
+          <div
+            role="alert"
+            className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          >
+            {error}
+          </div>
+        )}
+
+        {/* STATISTICS */}
 
         <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[
@@ -351,12 +421,19 @@ export default function AdminTuitionsPage() {
               <p className="text-sm font-semibold text-slate-500">
                 {item.label}
               </p>
+
               <p className="mt-4 text-3xl font-extrabold text-[#14243a]">
-                {item.value}
+                {loading
+                  ? "..."
+                  : error
+                    ? "N/A"
+                    : item.value}
               </p>
             </article>
           ))}
         </section>
+
+        {/* LISTINGS */}
 
         <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -364,25 +441,33 @@ export default function AdminTuitionsPage() {
               <h2 className="text-xl font-extrabold text-[#14243a]">
                 Tuition Submissions
               </h2>
+
               <p className="mt-1 text-sm text-slate-500">
-                Showing {filteredTuitions.length} of{" "}
-                {tuitions.length} sample listings
+                {loading
+                  ? "Loading submissions..."
+                  : `Showing ${filteredTuitions.length} of ${tuitions.length} records`}
               </p>
             </div>
 
             <button
               type="button"
-              onClick={resetDemo}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              disabled={loading || processing}
+              onClick={refreshTuitions}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
               <RotateCcw size={16} />
-              Reset Demo
+              Refresh Data
             </button>
           </div>
 
+          {/* FILTERS */}
+
           <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_190px]">
             <div className="relative">
-              <label htmlFor="tuition-search" className="sr-only">
+              <label
+                htmlFor="tuition-search"
+                className="sr-only"
+              >
                 Search tuition listings
               </label>
 
@@ -398,13 +483,16 @@ export default function AdminTuitionsPage() {
                 onChange={(event) =>
                   setSearch(event.target.value)
                 }
-                placeholder="Search tuition, tutor, subject..."
+                placeholder="Search tuition, tutor ID, subject..."
                 className="w-full rounded-xl border border-slate-200 py-3 pl-11 pr-4 text-sm outline-none focus:border-[#e97c53]"
               />
             </div>
 
             <div>
-              <label htmlFor="tuition-status" className="sr-only">
+              <label
+                htmlFor="tuition-status"
+                className="sr-only"
+              >
                 Filter tuition status
               </label>
 
@@ -426,14 +514,35 @@ export default function AdminTuitionsPage() {
             </div>
           </div>
 
+          {/* TUITION CARDS */}
+
           <div className="mt-6 space-y-4">
-            {filteredTuitions.length === 0 ? (
+            {loading ? (
+              <div className="rounded-2xl bg-slate-50 p-10 text-center">
+                Loading tuition submissions...
+              </div>
+            ) : error ? (
+              <div className="rounded-2xl bg-red-50 p-10 text-center">
+                <p className="font-bold text-red-700">
+                  Unable to load tuition records.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={refreshTuitions}
+                  className="mt-4 rounded-xl bg-[#14243a] px-5 py-3 text-sm font-bold text-white"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : filteredTuitions.length === 0 ? (
               <div className="rounded-2xl bg-slate-50 p-10 text-center">
                 <h3 className="font-bold text-[#14243a]">
                   No tuition submissions found
                 </h3>
+
                 <p className="mt-2 text-sm text-slate-500">
-                  Try changing the search or status filter.
+                  Try another search or status filter.
                 </p>
               </div>
             ) : (
@@ -446,18 +555,15 @@ export default function AdminTuitionsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${statusColors[tuition.approvalStatus]}`}
+                          className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${
+                            statusColors[tuition.status] ||
+                            "bg-slate-100 text-slate-700"
+                          }`}
                         >
-                          {capitalize(tuition.approvalStatus)}
+                          {tuition.status}
                         </span>
 
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                          {tuition.isActive
-                            ? "Active"
-                            : "Inactive"}
-                        </span>
-
-                        <span className="text-xs text-slate-400">
+                        <span className="break-all text-xs text-slate-400">
                           {tuition.id}
                         </span>
                       </div>
@@ -467,25 +573,25 @@ export default function AdminTuitionsPage() {
                       </h3>
 
                       <p className="mt-2 text-sm text-slate-600">
-                        {tuition.subject} | {tuition.classLevel}
+                        {tuition.subject} |{" "}
+                        {tuition.classLevel}
                       </p>
 
-                      <p className="mt-2 text-sm text-slate-500">
-                        Tutor:{" "}
-                        <span className="font-semibold text-slate-700">
-                          {tuition.tutorName}
+                      <p className="mt-2 break-all text-sm text-slate-500">
+                        Tutor ID:{" "}
+                        <span className="font-semibold">
+                          {tuition.tutorId}
                         </span>
                       </p>
 
                       <p className="mt-1 text-sm text-slate-500">
-                        {tuition.mode} | {tuition.location}
+                        {tuition.location}
                       </p>
 
                       <p className="mt-3 text-sm font-bold text-[#14243a]">
-                        {formatMoney(tuition.monthlyFee)}
+                        {formatMoney(tuition.salary)}
                         <span className="font-normal text-slate-500">
-                          {" "}/ month |{" "}
-                          {tuition.daysPerWeek} days/week
+                          {" "}/ month
                         </span>
                       </p>
 
@@ -494,6 +600,8 @@ export default function AdminTuitionsPage() {
                         {formatDate(tuition.createdAt)}
                       </p>
                     </div>
+
+                    {/* BUTTONS */}
 
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -507,48 +615,58 @@ export default function AdminTuitionsPage() {
                         Details
                       </button>
 
-                      {tuition.approvalStatus !== "approved" && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            requestApproval(
-                              tuition.id,
-                              "approved"
-                            )
-                          }
-                          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700"
-                        >
-                          <CheckCircle2 size={15} />
-                          Approve
-                        </button>
-                      )}
+                      {tuition.status === "pending" && (
+                        <>
+                          {/* APPROVE */}
 
-                      {tuition.approvalStatus !== "rejected" && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            requestApproval(
-                              tuition.id,
-                              "rejected"
-                            )
-                          }
-                          className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
-                        >
-                          <XCircle size={15} />
-                          Reject
-                        </button>
+                          <button
+                            type="button"
+                            disabled={processing}
+                            onClick={() =>
+                              setConfirmation({
+                                id: tuition.id,
+                                action: "approve",
+                              })
+                            }
+                            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            <CheckCircle2 size={15} />
+                            Approve
+                          </button>
+
+                          {/* REJECT - NOW ACTIVE */}
+
+                          <button
+                            type="button"
+                            disabled={processing}
+                            onClick={() =>
+                              setConfirmation({
+                                id: tuition.id,
+                                action: "reject",
+                              })
+                            }
+                            className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-xs font-bold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <XCircle size={15} />
+                            Reject
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
 
-                  <p className="mt-4 border-t border-slate-100 pt-4 text-sm leading-6 text-slate-500">
-                    {tuition.description}
-                  </p>
+                  {tuition.requirements && (
+                    <p className="mt-4 whitespace-pre-wrap border-t border-slate-100 pt-4 text-sm leading-6 text-slate-500">
+                      {tuition.requirements}
+                    </p>
+                  )}
                 </article>
               ))
             )}
           </div>
         </section>
+
+        {/* DETAILS MODAL */}
 
         {selectedTuition && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#14243a]/70 p-4">
@@ -580,35 +698,26 @@ export default function AdminTuitionsPage() {
                 {[
                   ["Tuition ID", selectedTuition.id],
                   ["Title", selectedTuition.title],
-                  ["Tutor Name", selectedTuition.tutorName],
-                  ["Tutor Email", selectedTuition.tutorEmail],
+                  ["Tutor ID", selectedTuition.tutorId],
                   ["Subject", selectedTuition.subject],
                   ["Class Level", selectedTuition.classLevel],
-                  ["Mode", selectedTuition.mode],
                   ["Location", selectedTuition.location],
                   [
-                    "Monthly Fee",
-                    formatMoney(selectedTuition.monthlyFee),
+                    "Monthly Salary",
+                    formatMoney(selectedTuition.salary),
                   ],
                   [
-                    "Days Per Week",
-                    String(selectedTuition.daysPerWeek),
-                  ],
-                  [
-                    "Approval Status",
-                    capitalize(selectedTuition.approvalStatus),
-                  ],
-                  [
-                    "Active Status",
-                    selectedTuition.isActive
-                      ? "Active"
-                      : "Inactive",
+                    "Status",
+                    capitalize(selectedTuition.status),
                   ],
                   [
                     "Submitted",
                     formatDate(selectedTuition.createdAt),
                   ],
-                  ["Description", selectedTuition.description],
+                  [
+                    "Requirements",
+                    selectedTuition.requirements || "N/A",
+                  ],
                 ].map(([label, value]) => (
                   <div
                     key={label}
@@ -617,7 +726,8 @@ export default function AdminTuitionsPage() {
                     <p className="text-xs font-bold text-slate-400">
                       {label}
                     </p>
-                    <p className="mt-1 break-words text-sm font-medium leading-6 text-[#14243a]">
+
+                    <p className="mt-1 whitespace-pre-wrap break-words text-sm font-medium leading-6 text-[#14243a]">
                       {value}
                     </p>
                   </div>
@@ -635,37 +745,45 @@ export default function AdminTuitionsPage() {
           </div>
         )}
 
+        {/* APPROVE / REJECT CONFIRMATION */}
+
         <ConfirmDialog
-          open={Boolean(confirmation && confirmationTuition)}
+          open={Boolean(confirmationTuition && confirmation)}
           title={
-            confirmation?.nextStatus === "approved"
-              ? "Approve Tuition?"
-              : "Reject Tuition?"
+            confirmation?.action === "reject"
+              ? "Reject Tuition?"
+              : "Approve Tuition?"
           }
           description={
-            confirmation?.nextStatus === "approved"
-              ? "Approve this sample tuition? The change will apply only in this browser session."
-              : "Reject this sample tuition? The change will apply only in this browser session."
+            confirmation?.action === "reject"
+              ? "This tuition will be marked as rejected in MongoDB and will not appear in public listings."
+              : "This tuition will be approved in MongoDB and can appear in public listings when active."
           }
           confirmLabel={
-            confirmation?.nextStatus === "approved"
-              ? "Approve Tuition"
-              : "Reject Tuition"
+            processing
+              ? "Processing..."
+              : confirmation?.action === "reject"
+                ? "Reject Tuition"
+                : "Approve Tuition"
           }
           variant={
-            confirmation?.nextStatus === "approved"
-              ? "info"
-              : "danger"
+            confirmation?.action === "reject"
+              ? "danger"
+              : "info"
           }
-          onConfirm={confirmApproval}
-          onCancel={() => setConfirmation(null)}
+          onConfirm={() => {
+            if (!processing) {
+              void confirmAction();
+            }
+          }}
+          onCancel={() => {
+            if (!processing) {
+              setConfirmation(null);
+            }
+          }}
         >
           <p className="font-bold">
             {confirmationTuition?.title}
-          </p>
-          <p className="mt-2 text-xs text-slate-500">
-            No real tuition record or public listing
-            will be updated.
           </p>
         </ConfirmDialog>
       </div>
