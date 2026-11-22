@@ -1,6 +1,6 @@
 
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
@@ -25,11 +25,21 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-[#fff9f0] text-[#14243a] antialiased">
-        <ToastProvider>
-          <SiteHeader />
-          {children}
-          <SiteFooter />
-        </ToastProvider>
+        <Suspense
+          fallback={
+            <div className="flex min-h-screen items-center justify-center bg-[#fff9f0]">
+              <p className="text-sm font-semibold text-[#627181]">
+                Loading MentorLagbe...
+              </p>
+            </div>
+          }
+        >
+          <ToastProvider>
+            <SiteHeader />
+            {children}
+            <SiteFooter />
+          </ToastProvider>
+        </Suspense>
       </body>
     </html>
   );

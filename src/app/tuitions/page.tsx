@@ -1,5 +1,6 @@
 
 "use client";
+import Link from "next/link";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -566,16 +567,21 @@ export default function BrowseTuitionsPage() {
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedId(tuition.id)
-                      }
-                      className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#d96c45]"
-                    >
-                      View Details
-                      <ArrowRight size={17} />
-                    </button>
+                    <Link
+  href={`/tuitions/${tuition.id}`}
+  className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#d96c45]"
+>
+  View Details
+  <ArrowRight size={17} />
+</Link>
+
+<button
+  type="button"
+  onClick={() => setSelectedId(tuition.id)}
+  className="mt-3 w-full rounded-xl border border-[#dce4e1] px-5 py-3 text-sm font-bold text-[#526275] hover:bg-[#f7faf7]"
+>
+  Quick Preview
+</button>
                   </div>
                 </article>
               );

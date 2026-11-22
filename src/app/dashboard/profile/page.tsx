@@ -2,157 +2,252 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import type { ChangeEvent, FormEvent } from "react";
 import {
+  useCallback,
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
+
+import {
+  AlertCircle,
   ArrowLeft,
   Camera,
+  CheckCircle2,
+  ImageIcon,
+  Loader2,
   RotateCcw,
   Save,
   ShieldCheck,
+  Upload,
   UserRound,
 } from "lucide-react";
 
-import { useToast } from "@/components/ui/toast-provider";
-
-type UserRole = "student" | "tutor" | "admin";
+type Role = "student" | "tutor" | "admin";
 
 type Profile = {
+  id: string;
   name: string;
   email: string;
+  role: Role;
   phone: string;
   bio: string;
-  role: UserRole;
-  plan: "free" | "pro";
   imageUrl: string;
+  plan: string;
 };
 
-type EditableField = "name" | "phone" | "bio" | "imageUrl";
-
-type ProfileErrors = Partial<
-  Record<EditableField | "image", string>
->;
-
-const initialProfile: Profile = {
-  name: "Demo MentorLagbe User",
-  email: "demo@example.com",
-  phone: "01712345678",
-  bio: "Passionate about learning, mentorship and personal growth.",
-  role: "student",
-  plan: "free",
-  imageUrl: "",
+type Session = {
+  token?: string;
+  user?: {
+    id?: string;
+    name?: string;
+    email?: string;
+    role?: Role;
+  };
 };
+
+type ProfileResponse = {
+  success?: boolean;
+  message?: string;
+  profile?: Profile;
+  imageUrl?: string;
+  errors?: Record<string, string[]>;
+};
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5001";
 
 const fieldStyle =
-  "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#14243a] outline-none transition focus:border-[#e97c53] focus:ring-2 focus:ring-orange-100";
+  "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#14243a] outline-none focus:border-[#e97c53] focus:ring-2 focus:ring-orange-100";
 
 function getInitials(name: string) {
   return name
     .trim()
     .split(/\s+/)
     .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
+    .map((part) => part[0]?.toUpperCase() || "")
     .join("");
 }
 
-function validateProfile(profile: Profile): ProfileErrors {
-  const nextErrors: ProfileErrors = {};
-
+function validateProfile(profile: Profile) {
   if (profile.name.trim().length < 3) {
-    nextErrors.name =
-      "Full name must contain at least 3 characters.";
+    return "Name must contain at least 3 characters.";
   }
 
   if (
     profile.phone.trim() &&
-    !/^(?:\+?88)?01[3-9]\d{8}$/.test(profile.phone.trim())
+    !/^(?:\+?88)?01[3-9]\d{8}$/.test(
+      profile.phone.trim()
+    )
   ) {
-    nextErrors.phone =
-      "Enter a valid Bangladesh mobile number.";
+    return "Enter a valid Bangladesh mobile number.";
   }
 
   if (profile.bio.trim().length > 500) {
-    nextErrors.bio =
-      "Bio cannot contain more than 500 characters.";
+    return "Bio cannot exceed 500 characters.";
   }
 
   if (profile.imageUrl.trim()) {
     try {
       const url = new URL(profile.imageUrl.trim());
 
-      if (
-        url.protocol !== "http:" &&
-        url.protocol !== "https:"
-      ) {
-        nextErrors.imageUrl =
-          "Enter a valid HTTP or HTTPS image URL.";
+      if (!["http:", "https:"].includes(url.protocol)) {
+        return "Image URL must start with http or https.";
       }
     } catch {
-      nextErrors.imageUrl = "Enter a valid image URL.";
+      return "Enter a valid image URL.";
     }
   }
 
-  return nextErrors;
+  return "";
 }
 
 export default function UpdateProfilePage() {
-  const toast = useToast();
+  const [token, setToken] = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
 
-  const [profile, setProfile] = useState<Profile>({
-    ...initialProfile,
-  });
+  const [profile, setProfile] =
+    useState<Profile | null>(null);
 
-  const [savedProfile, setSavedProfile] = useState<Profile>({
-    ...initialProfile,
-  });
+  const [savedProfile, setSavedProfile] =
+    useState<Profile | null>(null);
 
-  const [previewImage, setPreviewImage] = useState("");
-  const [savedPreviewImage, setSavedPreviewImage] =
-    useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  const [selectedFileName, setSelectedFileName] =
-    useState("");
+  const [selectedFile, setSelectedFile] =
+    useState<File | null>(null);
+
+  const [previewUrl, setPreviewUrl] = useState("");
+
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const [imageFailed, setImageFailed] = useState(false);
 
-  const [errors, setErrors] = useState<ProfileErrors>({});
+  // Revoke temporary image preview URLs.
+  useEffect(() => {
+    if (!previewUrl) return;
+
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  // Read login token.
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(
+        "mentorlagbe_auth"
+      );
+
+      if (saved) {
+        const session = JSON.parse(saved) as Session;
+        setToken(session.token || "");
+      }
+    } catch {
+      setToken("");
+    } finally {
+      setAuthChecked(true);
+    }
+  }, []);
+
+  // Load MongoDB profile.
+  const loadProfile = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!token) return;
+
+      setLoading(true);
+      setError("");
+
+      try {
+        const response = await fetch(
+          `${API_URL}/api/profile`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+            signal,
+          }
+        );
+
+        const result =
+          (await response.json()) as ProfileResponse;
+
+        if (
+          !response.ok ||
+          !result.success ||
+          !result.profile
+        ) {
+          throw new Error(
+            result.message || "Unable to load profile."
+          );
+        }
+
+        if (!signal?.aborted) {
+          setProfile(result.profile);
+          setSavedProfile(result.profile);
+          setImageFailed(false);
+        }
+      } catch (err) {
+        if (!signal?.aborted) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load profile."
+          );
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
+      }
+    },
+    [token]
+  );
 
   useEffect(() => {
-    return () => {
-      if (previewImage.startsWith("blob:")) {
-        URL.revokeObjectURL(previewImage);
-      }
-    };
-  }, [previewImage]);
+    if (!authChecked || !token) return;
 
-  const displayedImage = previewImage || profile.imageUrl;
-  const hasImage = Boolean(displayedImage) && !imageFailed;
+    const controller = new AbortController();
+
+    void loadProfile(controller.signal);
+
+    return () => controller.abort();
+  }, [authChecked, token, loadProfile]);
 
   function updateField(
-    field: EditableField,
+    field: "name" | "phone" | "bio" | "imageUrl",
     value: string
   ) {
-    setProfile((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setProfile((current) =>
+      current
+        ? {
+            ...current,
+            [field]: value,
+          }
+        : current
+    );
 
-    setErrors((current) => ({
-      ...current,
-      [field]: undefined,
-    }));
+    setError("");
+    setSuccess("");
 
     if (field === "imageUrl") {
       setImageFailed(false);
     }
   }
 
-  function selectImage(event: ChangeEvent<HTMLInputElement>) {
+  // Choose a local image.
+  function selectPhoto(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
 
-    if (!file) {
-      return;
-    }
+    event.target.value = "";
+
+    if (!file) return;
 
     const allowedTypes = [
       "image/jpeg",
@@ -161,124 +256,282 @@ export default function UpdateProfilePage() {
     ];
 
     if (!allowedTypes.includes(file.type)) {
-      const message =
-        "Only JPG, PNG or WebP images are allowed.";
-
-      setErrors((current) => ({
-        ...current,
-        image: message,
-      }));
-
-      toast.warning({
-        title: "Unsupported Image Format",
-        description: message,
-      });
-
-      event.target.value = "";
+      setError("Only JPG, PNG and WebP images are allowed.");
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      const message = "Image size must not exceed 2 MB.";
-
-      setErrors((current) => ({
-        ...current,
-        image: message,
-      }));
-
-      toast.warning({
-        title: "Image Is Too Large",
-        description: message,
-      });
-
-      event.target.value = "";
+      setError("Image must be 2 MB or smaller.");
       return;
     }
 
-    const objectUrl = URL.createObjectURL(file);
-
-    setPreviewImage(objectUrl);
-    setSelectedFileName(file.name);
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
     setImageFailed(false);
-
-    setProfile((current) => ({
-      ...current,
-      imageUrl: "",
-    }));
-
-    setErrors((current) => ({
-      ...current,
-      image: undefined,
-      imageUrl: undefined,
-    }));
-
-    toast.info({
-      title: "Photo Selected",
-      description:
-        "Your photo is previewed locally. It has not been uploaded.",
-    });
-
-    event.target.value = "";
+    setError("");
+    setSuccess("");
   }
 
-  function saveProfile(event: FormEvent<HTMLFormElement>) {
+  // Upload selected photo to ImgBB via our backend.
+  async function uploadPhoto() {
+    if (!selectedFile || !token || uploading || saving) {
+      return;
+    }
+
+    setUploading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const formData = new FormData();
+      formData.append("image", selectedFile);
+
+      const response = await fetch(
+        `${API_URL}/api/profile/upload-image`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
+
+      const result =
+        (await response.json()) as ProfileResponse;
+
+      if (
+        !response.ok ||
+        !result.success ||
+        !result.imageUrl
+      ) {
+        throw new Error(
+          result.message || "Image upload failed."
+        );
+      }
+
+      setProfile((current) =>
+        current
+          ? {
+              ...current,
+              imageUrl: result.imageUrl!,
+            }
+          : current
+      );
+
+      setSelectedFile(null);
+      setPreviewUrl("");
+      setImageFailed(false);
+
+      setSuccess(
+        "Photo uploaded to ImgBB! Now click Save Profile to save it to your account."
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to upload photo."
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function resetChanges() {
+    if (!savedProfile || uploading || saving) return;
+
+    setProfile({ ...savedProfile });
+    setSelectedFile(null);
+    setPreviewUrl("");
+    setError("");
+    setSuccess("");
+    setImageFailed(false);
+  }
+
+  // Save the profile and image URL to MongoDB.
+  async function saveProfile(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
-    const nextErrors = validateProfile(profile);
-
-    setErrors(nextErrors);
-
-    const firstError = Object.values(nextErrors)[0];
-
-    if (firstError) {
-      toast.error({
-        title: "Please Check Your Information",
-        description: firstError,
-      });
-
+    if (!profile || !token || saving || uploading) {
       return;
     }
 
-    const updatedProfile: Profile = {
-      ...profile,
-      name: profile.name.trim(),
-      phone: profile.phone.trim(),
-      bio: profile.bio.trim(),
-      imageUrl: profile.imageUrl.trim(),
-    };
+    if (selectedFile) {
+      setError(
+        "Please upload your selected photo before saving the profile."
+      );
+      return;
+    }
 
-    setProfile(updatedProfile);
-    setSavedProfile(updatedProfile);
-    setSavedPreviewImage(previewImage);
+    const validationError = validateProfile(profile);
 
-    toast.success({
-      title: "Demo Profile Updated",
-      description:
-        "Changes are saved only in this page's temporary state. Refreshing will reset them.",
-    });
+    if (validationError) {
+      setError(validationError);
+      setSuccess("");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/profile`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: profile.name.trim(),
+            phone: profile.phone.trim(),
+            bio: profile.bio.trim(),
+            imageUrl: profile.imageUrl.trim(),
+          }),
+        }
+      );
+
+      const result =
+        (await response.json()) as ProfileResponse;
+
+      if (
+        !response.ok ||
+        !result.success ||
+        !result.profile
+      ) {
+        const fieldErrors = result.errors
+          ? Object.values(result.errors).flat()
+          : [];
+
+        throw new Error(
+          fieldErrors[0] ||
+            result.message ||
+            "Profile save failed."
+        );
+      }
+
+      setProfile(result.profile);
+      setSavedProfile(result.profile);
+      setImageFailed(false);
+
+      // Keep browser session name in sync.
+      try {
+        const saved = sessionStorage.getItem(
+          "mentorlagbe_auth"
+        );
+
+        if (saved) {
+          const session = JSON.parse(saved) as Session;
+
+          sessionStorage.setItem(
+            "mentorlagbe_auth",
+            JSON.stringify({
+              ...session,
+              user: {
+                ...session.user,
+                id: result.profile.id,
+                name: result.profile.name,
+                email: result.profile.email,
+                role: result.profile.role,
+              },
+            })
+          );
+        }
+      } catch {
+        // Database update is already complete.
+      }
+
+      setSuccess("Profile updated successfully!");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to save profile."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function resetProfile() {
-    setProfile({ ...initialProfile });
-    setSavedProfile({ ...initialProfile });
-
-    setPreviewImage("");
-    setSavedPreviewImage("");
-    setSelectedFileName("");
-    setImageFailed(false);
-    setErrors({});
-
-    toast.info({
-      title: "Demo Profile Reset",
-      description:
-        "The original demo information has been restored.",
-    });
+  if (!authChecked || loading) {
+    return (
+      <main className="min-h-[60vh] px-4 py-24 text-center">
+        <Loader2
+          size={32}
+          className="mx-auto animate-spin text-[#e97c53]"
+        />
+        <p className="mt-4 text-slate-500">
+          Loading your profile...
+        </p>
+      </main>
+    );
   }
+
+  if (!token) {
+    return (
+      <main className="min-h-[60vh] px-4 py-24 text-center">
+        <UserRound
+          size={40}
+          className="mx-auto text-[#e97c53]"
+        />
+
+        <h1 className="mt-5 text-2xl font-extrabold">
+          Login Required
+        </h1>
+
+        <p className="mt-3 text-sm text-slate-500">
+          Sign in to update your profile.
+        </p>
+
+        <Link
+          href="/sign-in"
+          className="mt-6 inline-flex rounded-xl bg-[#14243a] px-6 py-3 font-bold text-white"
+        >
+          Sign In
+        </Link>
+      </main>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <main className="min-h-[60vh] px-4 py-24 text-center">
+        <AlertCircle
+          size={38}
+          className="mx-auto text-red-500"
+        />
+
+        <h1 className="mt-4 text-2xl font-extrabold">
+          Unable to Load Profile
+        </h1>
+
+        <p className="mt-3 text-sm text-red-600">
+          {error || "Profile information unavailable."}
+        </p>
+
+        <button
+          type="button"
+          onClick={() => void loadProfile()}
+          className="mt-6 rounded-xl bg-[#14243a] px-6 py-3 font-bold text-white"
+        >
+          Try Again
+        </button>
+      </main>
+    );
+  }
+
+  const displayedImage = previewUrl || profile.imageUrl;
+  const hasImage = Boolean(displayedImage) && !imageFailed;
 
   return (
     <main className="min-h-screen bg-[#fff9f0] px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-5xl space-y-7">
-        {/* Page header */}
+        {/* HEADER */}
+
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <Link
@@ -298,27 +551,47 @@ export default function UpdateProfilePage() {
             </h1>
 
             <p className="mt-2 text-sm text-slate-600">
-              Preview and edit your profile information.
+              Edit your details and profile photo.
             </p>
           </div>
 
-          <div className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-800">
+          <span className="inline-flex items-center gap-2 rounded-xl bg-[#e3f4e8] px-4 py-3 text-sm font-bold text-[#347457]">
             <ShieldCheck size={18} />
-            Demo Mode
-          </div>
+            Real Account
+          </span>
         </header>
 
-        {/* Demo explanation */}
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-          <strong>Frontend Preview:</strong> The form is
-          interactive, but it does not update an
-          authenticated account or database. Uploaded
-          images are previewed locally and are not sent
-          to ImgBB.
-        </div>
+        {/* NOTIFICATIONS */}
+
+        {error && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          >
+            <AlertCircle
+              size={18}
+              className="mr-2 inline"
+            />
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div
+            role="status"
+            className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700"
+          >
+            <CheckCircle2
+              size={18}
+              className="mr-2 inline"
+            />
+            {success}
+          </div>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-          {/* Profile card */}
+          {/* PROFILE CARD */}
+
           <aside className="self-start rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
             <div className="flex flex-col items-center text-center">
               <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-4 border-[#e3f4e8] bg-[#14243a] text-white">
@@ -326,7 +599,7 @@ export default function UpdateProfilePage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={displayedImage}
-                    alt="Selected profile preview"
+                    alt="Your profile"
                     onError={() => setImageFailed(true)}
                     className="h-full w-full object-cover"
                   />
@@ -340,7 +613,7 @@ export default function UpdateProfilePage() {
               </div>
 
               <h2 className="mt-4 break-words text-lg font-extrabold text-[#14243a]">
-                {profile.name || "Your Name"}
+                {profile.name}
               </h2>
 
               <p className="mt-1 break-all text-sm text-slate-500">
@@ -357,158 +630,96 @@ export default function UpdateProfilePage() {
                 </span>
               </div>
 
-              <p className="mt-5 text-xs leading-6 text-slate-500">
+              <p className="mt-5 whitespace-pre-wrap text-xs leading-6 text-slate-500">
                 {profile.bio ||
-                  "Your profile bio will appear here."}
+                  "Add a short bio to introduce yourself."}
               </p>
             </div>
 
             <div className="mt-6 rounded-xl bg-slate-50 p-4">
               <p className="text-xs font-bold text-slate-500">
-                Last saved demo name
+                Profile Storage
               </p>
 
-              <p className="mt-2 break-words text-sm font-semibold text-[#14243a]">
-                {savedProfile.name}
+              <p className="mt-2 text-sm font-semibold text-[#14243a]">
+                MongoDB + ImgBB
               </p>
 
-              <p className="mt-2 text-xs text-slate-400">
-                {savedPreviewImage
-                  ? "A local demo photo was selected."
-                  : "No local demo photo saved."}
+              <p className="mt-2 text-xs leading-6 text-slate-500">
+                Uploaded images are hosted on ImgBB.
+                The saved image URL is stored in your
+                MongoDB profile.
               </p>
             </div>
           </aside>
 
-          {/* Edit form */}
-          <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
-            <div className="mb-6">
-              <h2 className="text-xl font-extrabold text-[#14243a]">
-                Personal Information
-              </h2>
+          {/* PROFILE FORM */}
 
-              <p className="mt-2 text-sm text-slate-500">
-                Fields marked with * are required.
-              </p>
-            </div>
+          <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
+            <h2 className="text-xl font-extrabold text-[#14243a]">
+              Personal Information
+            </h2>
 
             <form
               onSubmit={saveProfile}
-              noValidate
-              className="space-y-5"
+              className="mt-6 space-y-5"
             >
-              {/* Full name */}
-              <div>
-                <label
-                  htmlFor="profile-name"
-                  className="mb-2 block text-sm font-bold text-[#14243a]"
-                >
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold">
                   Full Name *
-                </label>
+                </span>
 
                 <input
-                  id="profile-name"
                   type="text"
-                  autoComplete="name"
+                  required
+                  minLength={3}
+                  maxLength={100}
                   value={profile.name}
                   onChange={(event) =>
                     updateField("name", event.target.value)
                   }
-                  aria-invalid={Boolean(errors.name)}
-                  aria-describedby={
-                    errors.name ? "name-error" : undefined
-                  }
                   className={fieldStyle}
-                  placeholder="Enter your full name"
-                  required
                 />
+              </label>
 
-                {errors.name && (
-                  <p
-                    id="name-error"
-                    role="alert"
-                    className="mt-2 text-xs text-red-600"
-                  >
-                    {errors.name}
-                  </p>
-                )}
-              </div>
-
-              {/* Email */}
-              <div>
-                <label
-                  htmlFor="profile-email"
-                  className="mb-2 block text-sm font-bold text-[#14243a]"
-                >
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold">
                   Email Address
-                </label>
+                </span>
 
                 <input
-                  id="profile-email"
                   type="email"
                   value={profile.email}
                   disabled
-                  className={`${fieldStyle} cursor-not-allowed bg-slate-50 text-slate-500`}
+                  className={`${fieldStyle} cursor-not-allowed bg-slate-50`}
                 />
+              </label>
 
-                <p className="mt-2 text-xs text-slate-500">
-                  Email is read-only in this preview.
-                </p>
-              </div>
-
-              {/* Phone */}
-              <div>
-                <label
-                  htmlFor="profile-phone"
-                  className="mb-2 block text-sm font-bold text-[#14243a]"
-                >
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold">
                   Phone Number
-                </label>
+                </span>
 
                 <input
-                  id="profile-phone"
                   type="tel"
-                  autoComplete="tel"
                   value={profile.phone}
                   onChange={(event) =>
                     updateField("phone", event.target.value)
                   }
-                  aria-invalid={Boolean(errors.phone)}
-                  aria-describedby={
-                    errors.phone ? "phone-error" : undefined
-                  }
-                  className={fieldStyle}
                   placeholder="01XXXXXXXXX"
+                  className={fieldStyle}
                 />
+              </label>
 
-                {errors.phone && (
-                  <p
-                    id="phone-error"
-                    role="alert"
-                    className="mt-2 text-xs text-red-600"
-                  >
-                    {errors.phone}
-                  </p>
-                )}
-              </div>
-
-              {/* Bio */}
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <label
-                    htmlFor="profile-bio"
-                    className="text-sm font-bold text-[#14243a]"
-                  >
-                    About / Bio
-                  </label>
-
-                  <span className="text-xs text-slate-400">
+              <label className="block">
+                <span className="mb-2 flex items-center justify-between text-sm font-bold">
+                  About / Bio
+                  <span className="text-xs font-normal text-slate-400">
                     {profile.bio.length}/500
                   </span>
-                </div>
+                </span>
 
                 <textarea
-                  id="profile-bio"
                   rows={5}
                   maxLength={500}
                   value={profile.bio}
@@ -516,176 +727,153 @@ export default function UpdateProfilePage() {
                     updateField("bio", event.target.value)
                   }
                   className={fieldStyle}
-                  placeholder="Tell others about yourself..."
+                />
+              </label>
+
+              {/* PHOTO UPLOAD */}
+
+              <div className="rounded-2xl border border-dashed border-[#dce4e1] bg-[#f7faf7] p-5">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-[#fff0e7] p-3 text-[#e97c53]">
+                    <Camera size={23} />
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-bold">
+                      Profile Picture
+                    </h3>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      JPG, PNG, WebP · Maximum 2 MB
+                    </p>
+                  </div>
+                </div>
+
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={selectPhoto}
+                  disabled={uploading || saving}
+                  className="mt-5 block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#14243a] file:px-4 file:py-2 file:font-bold file:text-white"
                 />
 
-                {errors.bio && (
-                  <p
-                    role="alert"
-                    className="mt-2 text-xs text-red-600"
-                  >
-                    {errors.bio}
-                  </p>
+                {selectedFile && (
+                  <div className="mt-4">
+                    <p className="break-all text-xs font-semibold text-[#526275]">
+                      Selected: {selectedFile.name}
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => void uploadPhoto()}
+                      disabled={uploading || saving}
+                      className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#348265] px-5 py-3 text-sm font-bold text-white disabled:opacity-50"
+                    >
+                      {uploading ? (
+                        <Loader2
+                          size={17}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <Upload size={17} />
+                      )}
+
+                      {uploading
+                        ? "Uploading..."
+                        : "Upload Photo"}
+                    </button>
+                  </div>
                 )}
               </div>
 
-              {/* Photo upload */}
-              <div>
-                <label
-                  htmlFor="profile-image"
-                  className="mb-2 block text-sm font-bold text-[#14243a]"
-                >
-                  Profile Picture
-                </label>
-
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="rounded-xl bg-[#fff0e7] p-3 text-[#e97c53]">
-                      <Camera size={22} />
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-bold text-[#14243a]">
-                        Choose a photo
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        JPG, PNG or WebP - Maximum 2 MB
-                      </p>
-                    </div>
-                  </div>
-
-                  <input
-                    id="profile-image"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={selectImage}
-                    className="mt-4 block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#14243a] file:px-4 file:py-2 file:font-bold file:text-white"
-                  />
-
-                  {selectedFileName && (
-                    <p className="mt-3 break-all text-xs text-slate-600">
-                      Selected: {selectedFileName}
-                    </p>
-                  )}
-
-                  {errors.image && (
-                    <p
-                      role="alert"
-                      className="mt-2 text-xs text-red-600"
-                    >
-                      {errors.image}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Image URL */}
-              <div>
-                <label
-                  htmlFor="profile-image-url"
-                  className="mb-2 block text-sm font-bold text-[#14243a]"
-                >
-                  Or Use an Image URL
-                </label>
+              <label className="block">
+                <span className="mb-2 flex items-center gap-2 text-sm font-bold">
+                  <ImageIcon size={18} />
+                  Profile Image URL
+                </span>
 
                 <input
-                  id="profile-image-url"
-                  type="text"
-                  inputMode="url"
+                  type="url"
                   value={profile.imageUrl}
-                  onChange={(event) => {
-                    setPreviewImage("");
-                    setSelectedFileName("");
+                  onChange={(event) =>
                     updateField(
                       "imageUrl",
                       event.target.value
-                    );
-                  }}
-                  aria-invalid={Boolean(errors.imageUrl)}
-                  aria-describedby={
-                    errors.imageUrl
-                      ? "image-url-error"
-                      : undefined
+                    )
                   }
-                  className={fieldStyle}
                   placeholder="https://example.com/profile.jpg"
+                  className={fieldStyle}
                 />
 
-                {errors.imageUrl && (
-                  <p
-                    id="image-url-error"
-                    role="alert"
-                    className="mt-2 text-xs text-red-600"
-                  >
-                    {errors.imageUrl}
-                  </p>
-                )}
-              </div>
+                <p className="mt-2 text-xs leading-6 text-slate-500">
+                  This field fills automatically after a
+                  successful photo upload. You can also
+                  provide your own public image URL.
+                </p>
+              </label>
 
-              {/* Account information */}
+              {/* ACCOUNT INFORMATION */}
+
               <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="profile-role"
-                    className="mb-2 block text-sm font-bold text-[#14243a]"
-                  >
+                <label className="block">
+                  <span className="mb-2 block text-sm font-bold">
                     Account Role
-                  </label>
+                  </span>
 
                   <input
-                    id="profile-role"
                     value={profile.role}
                     disabled
                     className={`${fieldStyle} cursor-not-allowed bg-slate-50 capitalize`}
                   />
-                </div>
+                </label>
 
-                <div>
-                  <label
-                    htmlFor="profile-plan"
-                    className="mb-2 block text-sm font-bold text-[#14243a]"
-                  >
+                <label className="block">
+                  <span className="mb-2 block text-sm font-bold">
                     Subscription Plan
-                  </label>
+                  </span>
 
                   <input
-                    id="profile-plan"
                     value={profile.plan}
                     disabled
                     className={`${fieldStyle} cursor-not-allowed bg-slate-50 capitalize`}
                   />
-                </div>
+                </label>
               </div>
 
-              {/* Buttons */}
+              {/* BUTTONS */}
+
               <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-5">
                 <button
                   type="button"
-                  onClick={resetProfile}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                  onClick={resetChanges}
+                  disabled={saving || uploading}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 disabled:opacity-50"
                 >
                   <RotateCcw size={17} />
-                  Reset Demo
+                  Reset Changes
                 </button>
 
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#d96c45]"
+                  disabled={saving || uploading}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#e97c53] px-5 py-3 text-sm font-bold text-white hover:bg-[#d96c45] disabled:opacity-50"
                 >
-                  <Save size={17} />
-                  Save Demo Profile
+                  {saving ? (
+                    <Loader2
+                      size={17}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Save size={17} />
+                  )}
+
+                  {saving
+                    ? "Saving..."
+                    : "Save Profile"}
                 </button>
               </div>
             </form>
           </section>
-        </div>
-
-        <div className="rounded-2xl bg-[#e3f4e8] p-5 text-sm leading-6 text-slate-700">
-          <strong>Next Integration:</strong> Better Auth
-          will supply the logged-in user. The backend
-          will securely update profile information,
-          while ImgBB will store uploaded photos.
         </div>
       </div>
     </main>

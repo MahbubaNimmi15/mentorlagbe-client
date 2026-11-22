@@ -1,17 +1,27 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+
+import {
+  AlertCircle,
   ArrowLeft,
   ArrowUpRight,
   BookOpen,
   CalendarDays,
   CheckCircle2,
   Clock3,
+  Loader2,
+  RefreshCw,
   Search,
-  Trash2,
+  UserRound,
   XCircle,
 } from "lucide-react";
 
@@ -22,85 +32,246 @@ type ApplicationStatus =
 
 type Application = {
   id: string;
+  tuitionId: string;
   tuitionTitle: string;
   tutorName: string;
-  tutorEmail: string;
   subject: string;
   monthlyFee: number;
+  studentPhone: string;
+  preferredSchedule: string;
+  studentNote: string;
   appliedAt: string;
+  updatedAt: string;
   status: ApplicationStatus;
 };
 
-const demoApplications: Application[] = [
-  {
-    id: "demo-001",
-    tuitionTitle: "Master Mathematics with Confidence",
-    tutorName: "Nafisa Rahman",
-    tutorEmail: "demo-tutor1@example.com",
-    subject: "Mathematics",
-    monthlyFee: 2500,
-    appliedAt: "2026-11-12",
-    status: "pending",
-  },
-  {
-    id: "demo-002",
-    tuitionTitle: "Physics Made Simple",
-    tutorName: "Arif Hasan",
-    tutorEmail: "demo-tutor2@example.com",
-    subject: "Physics",
-    monthlyFee: 3500,
-    appliedAt: "2026-11-10",
-    status: "accepted",
-  },
-  {
-    id: "demo-003",
-    tuitionTitle: "IELTS Speaking & Writing",
-    tutorName: "Tahmid Karim",
-    tutorEmail: "demo-tutor3@example.com",
-    subject: "IELTS",
-    monthlyFee: 5000,
-    appliedAt: "2026-11-08",
-    status: "rejected",
-  },
-];
+type AuthSession = {
+  token?: string;
+  user?: {
+    id?: string;
+    name?: string;
+    role?: string;
+  };
+};
 
-const statusStyles: Record<ApplicationStatus, string> = {
+type ApplicationsResponse = {
+  success?: boolean;
+  message?: string;
+  applications?: Application[];
+};
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5001";
+
+const statusStyles: Record<
+  ApplicationStatus,
+  string
+> = {
   pending: "bg-amber-50 text-amber-700",
   accepted: "bg-green-50 text-green-700",
   rejected: "bg-red-50 text-red-700",
 };
 
 function formatMoney(amount: number) {
-  return `৳${amount.toLocaleString("en-BD")}`;
+  return `৳${Number(amount).toLocaleString("en-BD")}`;
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Not available";
+  }
+
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function SummaryCard({
+  label,
+  value,
+  icon,
+  background,
+}: {
+  label: string;
+  value: number;
+  icon: ReactNode;
+  background: string;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-[22px] border border-[#e6ebe7] bg-white p-6">
+      <div>
+        <p className="text-sm font-semibold text-[#72808c]">
+          {label}
+        </p>
+
+        <p className="mt-3 text-3xl font-extrabold">
+          {value}
+        </p>
+      </div>
+
+      <div
+        className={`flex h-12 w-12 items-center justify-center rounded-2xl ${background}`}
+      >
+        {icon}
+      </div>
+    </div>
+  );
 }
 
 export default function MyApplicationsPage() {
+  const [authChecked, setAuthChecked] =
+    useState(false);
+
+  const [session, setSession] =
+    useState<AuthSession | null>(null);
+
   const [applications, setApplications] =
-    useState<Application[]>(demoApplications);
+    useState<Application[]>([]);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] =
     useState("all");
 
-  const [cancelId, setCancelId] =
-    useState<string | null>(null);
+  // Read real student login session
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(
+        "mentorlagbe_auth"
+      );
 
-  const [notice, setNotice] = useState("");
+      if (saved) {
+        const parsed = JSON.parse(
+          saved
+        ) as AuthSession;
+
+        setSession(parsed);
+      } else {
+        setSession(null);
+      }
+    } catch {
+      setSession(null);
+    } finally {
+      setAuthChecked(true);
+    }
+  }, []);
+
+  const isStudent =
+    Boolean(session?.token) &&
+    session?.user?.role === "student";
+
+  // Load applications from MongoDB API
+  const loadApplications = useCallback(
+    async (signal?: AbortSignal) => {
+      if (
+        !session?.token ||
+        session.user?.role !== "student"
+      ) {
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+
+      try {
+        const response = await fetch(
+          `${API_URL}/api/tuitions/student/my-applications`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${session.token}`,
+            },
+            cache: "no-store",
+            signal,
+          }
+        );
+
+        const result =
+          (await response.json()) as ApplicationsResponse;
+
+        if (
+          !response.ok ||
+          !result.success ||
+          !Array.isArray(result.applications)
+        ) {
+          throw new Error(
+            result.message ||
+              "Unable to load applications."
+          );
+        }
+
+        if (!signal?.aborted) {
+          setApplications(result.applications);
+        }
+      } catch (err) {
+        if (!signal?.aborted) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load applications."
+          );
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
+      }
+    },
+    [session]
+  );
+
+  useEffect(() => {
+    if (!authChecked || !isStudent) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    void loadApplications(controller.signal);
+
+    return () => controller.abort();
+  }, [authChecked, isStudent, loadApplications]);
+
+  const stats = useMemo(
+    () => ({
+      total: applications.length,
+
+      pending: applications.filter(
+        (item) => item.status === "pending"
+      ).length,
+
+      accepted: applications.filter(
+        (item) => item.status === "accepted"
+      ).length,
+
+      rejected: applications.filter(
+        (item) => item.status === "rejected"
+      ).length,
+    }),
+    [applications]
+  );
 
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
     return applications.filter((application) => {
+      const searchable = [
+        application.tuitionTitle,
+        application.subject,
+        application.tutorName,
+      ]
+        .join(" ")
+        .toLowerCase();
+
       const matchesSearch =
-        application.tuitionTitle
-          .toLowerCase()
-          .includes(keyword) ||
-        application.subject
-          .toLowerCase()
-          .includes(keyword) ||
-        application.tutorName
-          .toLowerCase()
-          .includes(keyword);
+        searchable.includes(keyword);
 
       const matchesStatus =
         statusFilter === "all" ||
@@ -110,39 +281,54 @@ export default function MyApplicationsPage() {
     });
   }, [applications, search, statusFilter]);
 
-  const pendingCount = applications.filter(
-    (item) => item.status === "pending"
-  ).length;
+  // Checking session
+  if (!authChecked) {
+    return (
+      <div className="py-20 text-center">
+        <Loader2
+          size={30}
+          className="mx-auto animate-spin text-[#e97c53]"
+        />
 
-  const acceptedCount = applications.filter(
-    (item) => item.status === "accepted"
-  ).length;
-
-  function cancelApplication() {
-    if (!cancelId) return;
-
-    const selected = applications.find(
-      (item) => item.id === cancelId
+        <p className="mt-4 text-[#71808c]">
+          Checking student account...
+        </p>
+      </div>
     );
+  }
 
-    if (!selected || selected.status !== "pending") {
-      setCancelId(null);
-      return;
-    }
+  // Student account required
+  if (!isStudent) {
+    return (
+      <div className="py-20 text-center">
+        <UserRound
+          size={42}
+          className="mx-auto text-[#e97c53]"
+        />
 
-    setApplications((previous) =>
-      previous.filter((item) => item.id !== cancelId)
+        <h1 className="mt-5 text-2xl font-extrabold">
+          Student Login Required
+        </h1>
+
+        <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-[#71808c]">
+          Please sign in with your Student account
+          to track your tuition applications.
+        </p>
+
+        <Link
+          href="/sign-in"
+          className="mt-6 inline-flex rounded-xl bg-[#14243a] px-6 py-3 text-sm font-bold text-white"
+        >
+          Sign In
+        </Link>
+      </div>
     );
-
-    setNotice(
-      "Demo application removed from this preview. No database record was changed."
-    );
-
-    setCancelId(null);
   }
 
   return (
     <div className="space-y-8">
+      {/* PAGE HEADER */}
+
       <div>
         <Link
           href="/dashboard/student"
@@ -163,49 +349,72 @@ export default function MyApplicationsPage() {
             </h1>
 
             <p className="mt-3 max-w-xl text-sm leading-7 text-[#71808c]">
-              Track applications and their statuses from
-              one organized workspace.
+              Track your real tuition applications and
+              review the latest decisions from tutors.
             </p>
           </div>
 
-          <Link
-            href="/tuitions"
-            className="btn-primary"
-          >
-            Find Tuitions
-            <ArrowUpRight size={17} />
-          </Link>
-        </div>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => void loadApplications()}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-xl border border-[#dce4e1] bg-white px-5 py-3 text-sm font-bold text-[#526275] disabled:opacity-50"
+            >
+              <RefreshCw
+                size={17}
+                className={
+                  loading ? "animate-spin" : ""
+                }
+              />
 
-        <div className="mt-5 rounded-xl border border-[#f2d4ba] bg-[#fff7e9] p-4 text-sm leading-6 text-[#986034]">
-          Demo preview only. These applications are
-          fictional, and changes are not saved to MongoDB.
-          Refreshing the page restores the sample data.
+              Refresh
+            </button>
+
+            <Link
+              href="/tuitions"
+              className="btn-primary"
+            >
+              Find Tuitions
+              <ArrowUpRight size={17} />
+            </Link>
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-3">
+      {/* REAL APPLICATION STATISTICS */}
+
+      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           label="Total Applied"
-          value={applications.length}
+          value={stats.total}
           icon={<BookOpen size={22} />}
           background="bg-[#e7f0ff]"
         />
 
         <SummaryCard
           label="Accepted"
-          value={acceptedCount}
+          value={stats.accepted}
           icon={<CheckCircle2 size={22} />}
           background="bg-[#e3f4e8]"
         />
 
         <SummaryCard
           label="Pending"
-          value={pendingCount}
+          value={stats.pending}
           icon={<Clock3 size={22} />}
           background="bg-[#fff0e7]"
         />
+
+        <SummaryCard
+          label="Rejected"
+          value={stats.rejected}
+          icon={<XCircle size={22} />}
+          background="bg-red-50"
+        />
       </div>
+
+      {/* APPLICATION TABLE */}
 
       <section className="rounded-[24px] border border-[#e6ebe7] bg-white p-5 md:p-7">
         <div className="flex flex-col gap-4 md:flex-row">
@@ -244,206 +453,198 @@ export default function MyApplicationsPage() {
               }
               className="h-12 w-full rounded-xl border border-[#dce4e1] bg-white px-4 text-sm outline-none"
             >
-              <option value="all">All statuses</option>
-              <option value="pending">Pending</option>
-              <option value="accepted">Accepted</option>
-              <option value="rejected">Rejected</option>
+              <option value="all">
+                All statuses
+              </option>
+              <option value="pending">
+                Pending
+              </option>
+              <option value="accepted">
+                Accepted
+              </option>
+              <option value="rejected">
+                Rejected
+              </option>
             </select>
           </label>
         </div>
 
-        {notice && (
+        {/* API ERROR */}
+
+        {error && (
           <div
-            role="status"
-            className="mt-5 rounded-xl bg-[#e3f4e8] p-4 text-sm text-[#326752]"
+            role="alert"
+            className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4"
           >
-            {notice}
+            <div className="flex items-center gap-2 text-sm font-bold text-red-700">
+              <AlertCircle size={18} />
+              Unable to load applications
+            </div>
+
+            <p className="mt-2 text-sm text-red-600">
+              {error}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => void loadApplications()}
+              className="mt-4 rounded-xl bg-[#14243a] px-5 py-3 text-sm font-bold text-white"
+            >
+              Try Again
+            </button>
           </div>
         )}
 
-        <div className="mt-7 overflow-x-auto">
-          <table className="w-full min-w-[780px] text-left">
-            <thead>
-              <tr className="border-b border-[#e6ebe7] text-xs uppercase tracking-wide text-[#778592]">
-                <th className="px-3 py-4">Tuition</th>
-                <th className="px-3 py-4">Tutor</th>
-                <th className="px-3 py-4">Fee</th>
-                <th className="px-3 py-4">Applied</th>
-                <th className="px-3 py-4">Status</th>
-                <th className="px-3 py-4 text-right">
-                  Action
-                </th>
-              </tr>
-            </thead>
+        {/* LOADING STATE */}
 
-            <tbody>
-              {filtered.map((application) => (
-                <tr
-                  key={application.id}
-                  className="border-b border-[#edf0ed] text-sm"
-                >
-                  <td className="px-3 py-5">
-                    <p className="font-bold text-[#14243a]">
-                      {application.tuitionTitle}
-                    </p>
-                    <p className="mt-2 text-xs text-[#7d8a94]">
-                      {application.subject}
-                    </p>
-                  </td>
+        {loading && (
+          <div className="mt-7 flex items-center gap-3 rounded-xl bg-[#f7faf7] p-5 text-sm text-[#647487]">
+            <Loader2
+              size={20}
+              className="animate-spin"
+            />
 
-                  <td className="px-3 py-5">
-                    <p className="font-semibold">
-                      {application.tutorName}
-                    </p>
-                    <p className="mt-2 text-xs text-[#7d8a94]">
-                      {application.tutorEmail}
-                    </p>
-                  </td>
+            Loading your applications...
+          </div>
+        )}
 
-                  <td className="px-3 py-5 font-bold">
-                    {formatMoney(
-                      application.monthlyFee
-                    )}
-                  </td>
+        {/* REAL APPLICATIONS */}
 
-                  <td className="px-3 py-5">
-                    <span className="inline-flex items-center gap-2">
-                      <CalendarDays size={15} />
-                      {application.appliedAt}
-                    </span>
-                  </td>
+        {!loading && !error && (
+          <>
+            <div className="mt-7 overflow-x-auto">
+              <table className="w-full min-w-[780px] text-left">
+                <thead>
+                  <tr className="border-b border-[#e6ebe7] text-xs uppercase tracking-wide text-[#778592]">
+                    <th className="px-3 py-4">
+                      Tuition
+                    </th>
+                    <th className="px-3 py-4">
+                      Tutor
+                    </th>
+                    <th className="px-3 py-4">
+                      Fee
+                    </th>
+                    <th className="px-3 py-4">
+                      Applied
+                    </th>
+                    <th className="px-3 py-4">
+                      Status
+                    </th>
+                    <th className="px-3 py-4 text-right">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
 
-                  <td className="px-3 py-5">
-                    <span
-                      className={`rounded-full px-3 py-2 text-xs font-bold capitalize ${statusStyles[application.status]}`}
+                <tbody>
+                  {filtered.map((application) => (
+                    <tr
+                      key={application.id}
+                      className="border-b border-[#edf0ed] text-sm"
                     >
-                      {application.status}
-                    </span>
-                  </td>
+                      <td className="px-3 py-5">
+                        <p className="font-bold text-[#14243a]">
+                          {application.tuitionTitle}
+                        </p>
 
-                  <td className="px-3 py-5 text-right">
-                    {application.status === "pending" ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNotice("");
-                          setCancelId(application.id);
-                        }}
-                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
-                      >
-                        <Trash2 size={15} />
-                        Cancel
-                      </button>
-                    ) : (
-                      <span className="text-xs text-[#9aa5ad]">
-                        No action
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        <p className="mt-2 text-xs text-[#7d8a94]">
+                          {application.subject}
+                        </p>
+                      </td>
 
-          {filtered.length === 0 && (
-            <div className="py-16 text-center">
-              <BookOpen
-                size={35}
-                className="mx-auto text-[#91a29a]"
-              />
-              <h3 className="mt-5 text-lg font-extrabold">
-                No applications found
-              </h3>
-              <p className="mt-2 text-sm text-[#74828d]">
-                Try another search or status filter.
-              </p>
+                      <td className="px-3 py-5">
+                        <p className="font-semibold">
+                          {application.tutorName ||
+                            "Registered Tutor"}
+                        </p>
+                      </td>
+
+                      <td className="px-3 py-5 font-bold">
+                        {formatMoney(
+                          application.monthlyFee
+                        )}
+                      </td>
+
+                      <td className="px-3 py-5">
+                        <span className="inline-flex items-center gap-2">
+                          <CalendarDays size={15} />
+
+                          {formatDate(
+                            application.appliedAt
+                          )}
+                        </span>
+                      </td>
+
+                      <td className="px-3 py-5">
+                        <span
+                          className={`rounded-full px-3 py-2 text-xs font-bold capitalize ${
+                            statusStyles[
+                              application.status
+                            ] || statusStyles.pending
+                          }`}
+                        >
+                          {application.status}
+                        </span>
+                      </td>
+
+                      <td className="px-3 py-5 text-right">
+                        <Link
+                          href={`/tuitions/${application.tuitionId}`}
+                          className="inline-flex items-center gap-1 rounded-xl border border-[#dce4e1] px-3 py-2 text-xs font-bold text-[#14243a] hover:bg-[#f7faf7]"
+                        >
+                          View Tuition
+                          <ArrowUpRight size={15} />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {filtered.length === 0 && (
+                <div className="py-16 text-center">
+                  <BookOpen
+                    size={35}
+                    className="mx-auto text-[#91a29a]"
+                  />
+
+                  <h3 className="mt-5 text-lg font-extrabold">
+                    No Applications Found
+                  </h3>
+
+                  <p className="mt-2 text-sm text-[#74828d]">
+                    {applications.length === 0
+                      ? "You have not applied for any tuition yet."
+                      : "Try another search or status filter."}
+                  </p>
+
+                  {applications.length === 0 && (
+                    <Link
+                      href="/tuitions"
+                      className="mt-5 inline-flex rounded-xl bg-[#14243a] px-5 py-3 text-sm font-bold text-white"
+                    >
+                      Browse Tuitions
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        <p className="mt-5 text-xs text-[#83919b]">
-          Showing {filtered.length} of{" "}
-          {applications.length} demo applications
-        </p>
+            <p className="mt-5 text-xs text-[#83919b]">
+              Showing {filtered.length} of{" "}
+              {applications.length} real applications
+            </p>
+          </>
+        )}
       </section>
 
-      {cancelId && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="cancel-dialog-title"
-            className="w-full max-w-md rounded-[24px] bg-white p-7 shadow-2xl"
-          >
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600">
-              <XCircle size={28} />
-            </div>
-
-            <h2
-              id="cancel-dialog-title"
-              className="mt-5 text-xl font-extrabold"
-            >
-              Remove demo application?
-            </h2>
-
-            <p className="mt-3 text-sm leading-7 text-[#687683]">
-              This removes the pending application from
-              the current preview only. It will not affect
-              a real student account.
-            </p>
-
-            <div className="mt-7 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setCancelId(null)}
-                className="rounded-xl border border-[#dce4e1] px-5 py-3 text-sm font-bold"
-              >
-                Keep
-              </button>
-
-              <button
-                type="button"
-                onClick={cancelApplication}
-                className="rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white"
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  icon,
-  background,
-}: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-  background: string;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-[22px] border border-[#e6ebe7] bg-white p-6">
-      <div>
-        <p className="text-sm font-semibold text-[#72808c]">
-          {label}
-        </p>
-
-        <p className="mt-3 text-3xl font-extrabold">
-          {value}
-        </p>
-      </div>
-
-      <div
-        className={`flex h-12 w-12 items-center justify-center rounded-2xl ${background}`}
-      >
-        {icon}
-      </div>
+      <p className="text-xs leading-6 text-[#83919b]">
+        Application statuses are updated by tutors.
+        Use Refresh to retrieve the latest status
+        from the server. Application withdrawal is not
+        available yet.
+      </p>
     </div>
   );
 }
